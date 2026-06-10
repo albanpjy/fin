@@ -37,11 +37,14 @@ portfolio <- read_csv(
 )
 
 # ---- 2. Téléchargement des cours (Yahoo Finance) -----------------------
+n_lignes_csv <- nrow(portfolio)
+
 prices <- tq_get(
   unique(portfolio$ticker),
   from = min(portfolio$date_achat) - days(7),
   to   = Sys.Date()
-)
+) |>
+  filter(!is.na(close))
 
 # Tickers introuvables sur Yahoo Finance : on les signale et on les écarte
 manquants <- setdiff(unique(portfolio$ticker), unique(prices$symbol))
@@ -76,9 +79,21 @@ positions <- portfolio |>
     investi = quantite * pmu,
     valeur  = quantite * cours,
     pnl     = valeur - investi,
-    pnl_pct = pnl / investi,
-    poids   = valeur / sum(valeur)
+    pnl_pct = pnl / investi
   )
+
+# Positions sans cours ou sans prix de revient exploitable : écartées
+# pour ne pas propager des NA dans les totaux.
+ecartees <- positions |> filter(is.na(valeur) | is.na(investi))
+if (nrow(ecartees) > 0) {
+  warning(
+    "Positions écartées (cours ou PMU indisponible) : ",
+    paste(ecartees$ticker, collapse = ", ")
+  )
+  positions <- positions |> filter(!is.na(valeur), !is.na(investi))
+}
+
+positions <- positions |> mutate(poids = valeur / sum(valeur))
 
 total_valeur  <- sum(positions$valeur)
 total_investi <- sum(positions$investi)
@@ -89,14 +104,14 @@ total_pnl_pct <- total_pnl / total_investi
 # Série journalière depuis le dernier achat (portefeuille complet),
 # avec report du dernier cours connu les jours sans cotation.
 valeur_quotidienne <- prices |>
-  filter(date >= max(portfolio$date_achat)) |>
+  filter(symbol %in% positions$ticker, date >= max(positions$date_achat)) |>
   select(symbol, date, close) |>
   pivot_wider(names_from = symbol, values_from = close) |>
   arrange(date) |>
   fill(-date, .direction = "down") |>
   drop_na() |>
   pivot_longer(-date, names_to = "ticker", values_to = "close") |>
-  left_join(select(portfolio, ticker, quantite), by = "ticker") |>
+  left_join(select(positions, ticker, quantite), by = "ticker") |>
   group_by(date) |>
   summarise(valeur = sum(close * quantite), .groups = "drop")
 
@@ -145,11 +160,16 @@ list(
 
 ```{r}
 #| content: valuebox
-#| title: "Nombre de lignes"
+#| title: "Lignes valorisées"
+n_exclues <- n_lignes_csv - nrow(positions)
 list(
   icon  = "list-ul",
-  color = "light",
-  value = nrow(positions)
+  color = if (n_exclues == 0) "light" else "warning",
+  value = if (n_exclues == 0) {
+    nrow(positions)
+  } else {
+    paste0(nrow(positions), " / ", n_lignes_csv, " (données manquantes)")
+  }
 )
 ```
 
