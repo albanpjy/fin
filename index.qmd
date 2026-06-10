@@ -1,0 +1,231 @@
+---
+title: "Portfolio Tracker"
+format:
+  dashboard:
+    theme: cosmo
+    orientation: rows
+    nav-buttons:
+      - icon: github
+        href: https://github.com/albanpjy/claude
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(tidyquant)
+library(plotly)
+library(DT)
+
+# Formatage à la française
+eur <- function(x) paste0(format(round(x), big.mark = " ", scientific = FALSE, trim = TRUE), " €")
+pct <- function(x) paste0(format(round(100 * x, 1), decimal.mark = ",", trim = TRUE), " %")
+
+# ---- 1. Lecture du portefeuille ----------------------------------------
+portfolio <- read_csv(
+  "portfolio.csv",
+  col_types = cols(
+    ticker     = col_character(),
+    nom        = col_character(),
+    type       = col_character(),
+    secteur    = col_character(),
+    quantite   = col_double(),
+    date_achat = col_date(),
+    pmu        = col_double()
+  )
+)
+
+# ---- 2. Téléchargement des cours (Yahoo Finance) -----------------------
+prices <- tq_get(
+  unique(portfolio$ticker),
+  from = min(portfolio$date_achat) - days(7),
+  to   = Sys.Date()
+)
+
+# Tickers introuvables sur Yahoo Finance : on les signale et on les écarte
+manquants <- setdiff(unique(portfolio$ticker), unique(prices$symbol))
+if (length(manquants) > 0) {
+  warning("Tickers sans données : ", paste(manquants, collapse = ", "))
+  portfolio <- portfolio |> filter(!ticker %in% manquants)
+}
+
+# ---- 3. Prix de revient ------------------------------------------------
+# Si le PMU n'est pas renseigné dans le CSV, on prend le cours de clôture
+# du premier jour de cotation suivant la date d'achat.
+premier_cours_apres <- function(tk, d) {
+  p <- prices |> filter(symbol == tk, date >= d) |> arrange(date)
+  if (nrow(p) == 0) NA_real_ else p$close[1]
+}
+
+portfolio <- portfolio |>
+  rowwise() |>
+  mutate(pmu = coalesce(pmu, premier_cours_apres(ticker, date_achat))) |>
+  ungroup()
+
+# ---- 4. Positions valorisées au dernier cours --------------------------
+derniers_cours <- prices |>
+  group_by(symbol) |>
+  slice_max(date, n = 1) |>
+  ungroup() |>
+  select(ticker = symbol, cours = close, date_cours = date)
+
+positions <- portfolio |>
+  left_join(derniers_cours, by = "ticker") |>
+  mutate(
+    investi = quantite * pmu,
+    valeur  = quantite * cours,
+    pnl     = valeur - investi,
+    pnl_pct = pnl / investi,
+    poids   = valeur / sum(valeur)
+  )
+
+total_valeur  <- sum(positions$valeur)
+total_investi <- sum(positions$investi)
+total_pnl     <- total_valeur - total_investi
+total_pnl_pct <- total_pnl / total_investi
+
+# ---- 5. Valeur quotidienne du portefeuille -----------------------------
+# Série journalière depuis le dernier achat (portefeuille complet),
+# avec report du dernier cours connu les jours sans cotation.
+valeur_quotidienne <- prices |>
+  filter(date >= max(portfolio$date_achat)) |>
+  select(symbol, date, close) |>
+  pivot_wider(names_from = symbol, values_from = close) |>
+  arrange(date) |>
+  fill(-date, .direction = "down") |>
+  drop_na() |>
+  pivot_longer(-date, names_to = "ticker", values_to = "close") |>
+  left_join(select(portfolio, ticker, quantite), by = "ticker") |>
+  group_by(date) |>
+  summarise(valeur = sum(close * quantite), .groups = "drop")
+
+# Performance depuis le début de l'année
+valeur_debut_annee <- valeur_quotidienne |>
+  filter(year(date) == year(Sys.Date())) |>
+  slice_min(date, n = 1) |>
+  pull(valeur)
+
+perf_ytd <- last(arrange(valeur_quotidienne, date)$valeur) / valeur_debut_annee - 1
+```
+
+# Vue d'ensemble
+
+## Row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Valeur du portefeuille"
+list(
+  icon  = "wallet2",
+  color = "primary",
+  value = eur(total_valeur)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Plus / moins-value latente"
+list(
+  icon  = if (total_pnl >= 0) "graph-up-arrow" else "graph-down-arrow",
+  color = if (total_pnl >= 0) "success" else "danger",
+  value = paste0(eur(total_pnl), " (", pct(total_pnl_pct), ")")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Performance depuis le 1er janvier"
+list(
+  icon  = "calendar3",
+  color = if (perf_ytd >= 0) "success" else "danger",
+  value = pct(perf_ytd)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Nombre de lignes"
+list(
+  icon  = "list-ul",
+  color = "light",
+  value = nrow(positions)
+)
+```
+
+## Row {height="40%"}
+
+```{r}
+#| title: "Répartition par secteur"
+alloc_secteur <- positions |>
+  group_by(secteur) |>
+  summarise(valeur = sum(valeur), .groups = "drop")
+
+plot_ly(
+  type   = "treemap",
+  ids    = c(alloc_secteur$secteur, positions$ticker),
+  labels = c(alloc_secteur$secteur, positions$nom),
+  parents = c(rep("", nrow(alloc_secteur)), positions$secteur),
+  values = c(alloc_secteur$valeur, positions$valeur),
+  branchvalues = "total",
+  texttemplate = "%{label}<br>%{value:,.0f} €",
+  hovertemplate = "%{label}<br>%{value:,.0f} € (%{percentRoot:.1%})<extra></extra>"
+)
+```
+
+```{r}
+#| title: "Évolution de la valeur du portefeuille"
+plot_ly(
+  valeur_quotidienne,
+  x = ~date, y = ~valeur,
+  type = "scatter", mode = "lines",
+  line = list(color = "#2c6fbb", width = 2),
+  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:,.0f} €<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = ""),
+    yaxis = list(title = "", tickformat = ",.0f", ticksuffix = " €")
+  )
+```
+
+## Row {height="40%"}
+
+### Column {width="30%"}
+
+```{r}
+#| title: "Actions vs ETF"
+positions |>
+  group_by(type) |>
+  summarise(valeur = sum(valeur), .groups = "drop") |>
+  plot_ly(
+    labels = ~type, values = ~valeur,
+    type = "pie", hole = 0.55,
+    textinfo = "label+percent",
+    hovertemplate = "%{label}<br>%{value:,.0f} €<extra></extra>"
+  ) |>
+  layout(showlegend = FALSE)
+```
+
+### Column {width="70%"}
+
+```{r}
+#| title: "Détail des positions"
+positions |>
+  arrange(desc(valeur)) |>
+  select(
+    Nom = nom, Ticker = ticker, Type = type,
+    `Quantité` = quantite, PMU = pmu, Cours = cours,
+    Valeur = valeur, `+/- value` = pnl,
+    `+/- value (%)` = pnl_pct, Poids = poids
+  ) |>
+  datatable(
+    rownames = FALSE,
+    options = list(pageLength = 15, dom = "ftip"),
+    class = "compact stripe hover"
+  ) |>
+  formatCurrency(
+    c("PMU", "Cours", "Valeur", "+/- value"),
+    currency = " €", before = FALSE, mark = " ", dec.mark = ","
+  ) |>
+  formatPercentage(c("+/- value (%)", "Poids"), digits = 1, dec.mark = ",")
+```

@@ -1,0 +1,11 @@
+# Sortie Quarto
+/docs/
+/.quarto/
+/index_files/
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj

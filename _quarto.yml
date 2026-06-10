@@ -1,0 +1,9 @@
+project:
+  title: "Portfolio Tracker"
+  output-dir: docs
+
+lang: fr
+
+execute:
+  warning: false
+  message: false
