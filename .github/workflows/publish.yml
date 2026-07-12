@@ -11,9 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -22,9 +20,6 @@ concurrency:
 jobs:
   publier:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploiement.outputs.page_url }}
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
@@ -56,16 +51,9 @@ jobs:
       - name: Rendre le dashboard
         run: quarto render
 
-      - name: Configurer GitHub Pages
-        uses: actions/configure-pages@v5
+      - name: Déployer sur la branche gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          enablement: true
-
-      - name: Téléverser le site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-
-      - name: Déployer sur GitHub Pages
-        id: deploiement
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          commit_message: "Publication du dashboard"
