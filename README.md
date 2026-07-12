@@ -1,5 +1,11 @@
 # 📊 Portfolio Tracker
 
+[![Publier le dashboard](https://github.com/albanpjy/claude/actions/workflows/publish.yml/badge.svg)](https://github.com/albanpjy/claude/actions/workflows/publish.yml)
+
+**🌐 Dashboard en ligne : <https://albanpjy.github.io/claude/>** — re-généré
+automatiquement du lundi au vendredi à 18 h UTC (après la clôture d'Euronext)
+par une GitHub Action, et à chaque push.
+
 Dashboard [Quarto](https://quarto.org/) en R pour suivre un portefeuille d'actions et d'ETF :
 valorisation au dernier cours, plus/moins-values latentes, allocation sectorielle et
 évolution de la valeur dans le temps. Les cours sont récupérés gratuitement sur
@@ -67,11 +73,18 @@ Remplacez les lignes d'exemple par vos vraies positions, puis relancez `quarto r
 ## 🗂️ Structure du projet
 
 ```
-├── _quarto.yml      # configuration du projet Quarto (sortie dans docs/)
-├── index.qmd        # le dashboard (page « Vue d'ensemble »)
-├── portfolio.csv    # les positions du portefeuille
-└── docs/            # sortie HTML générée (non versionnée)
+├── .github/workflows/publish.yml  # rendu quotidien + déploiement GitHub Pages
+├── _quarto.yml                    # configuration Quarto (sortie dans docs/)
+├── index.qmd                      # le dashboard (5 onglets)
+├── portfolio.csv                  # les positions du portefeuille
+├── cache_cours.rds                # cache local des cours (non versionné)
+└── docs/                          # sortie HTML générée (non versionnée)
 ```
+
+💡 Les cours sont mis en cache une journée (`cache_cours.rds`) : le premier
+rendu du jour télécharge, les suivants sont instantanés. Supprimez le fichier
+pour forcer un rafraîchissement. En cas de panne de Yahoo Finance, le dernier
+cache disponible est utilisé avec un avertissement.
 
 ## 🗺️ Feuille de route
 
@@ -80,8 +93,9 @@ Remplacez les lignes d'exemple par vos vraies positions, puis relancez `quarto r
 - [x] **v2 — Théorie, Performance, Risque, Couverture** : MEDAF, ratios et
   frontière efficiente (théorie + application aux 10 lignes), benchmark,
   corrélations, VaR, drawdown, stratégies de couverture par options
-- [ ] **v3 — Publication automatique** : GitHub Action quotidienne qui re-génère le
-  dashboard à la clôture des marchés et le publie sur GitHub Pages
+- [x] **v3 — Publication automatique** : GitHub Action quotidienne (18 h UTC,
+  lun.-ven.) qui re-génère le dashboard après la clôture et le publie sur
+  GitHub Pages, avec cache local des cours en bonus
 
 ## ⚠️ Avertissements
 

@@ -25,9 +25,27 @@ install.packages(c("tidyverse", "tidyquant", "plotly", "DT"))
 ```
 
 Il n'y a ni tests ni linter. Le rendu complet **nécessite un accès réseau à
-Yahoo Finance** ; dans un environnement sans réseau (conteneur distant), on peut
-au moins vérifier la syntaxe des chunks R en les extrayant de `index.qmd` et en
-les passant à `parse(text = ...)` avec `Rscript` (R seul suffit, sans les packages).
+Yahoo Finance** au premier rendu du jour ; les cours sont ensuite mis en cache
+dans `cache_cours.rds` (gitignoré, invalidé au changement de date — supprimer le
+fichier pour forcer un rafraîchissement ; en cas de panne réseau, le cache
+périmé sert de repli avec un warning). Dans un environnement sans réseau
+(conteneur distant), on peut au moins vérifier la syntaxe des chunks R en les
+extrayant de `index.qmd` et en les passant à `parse(text = ...)` avec `Rscript`
+(R seul suffit, sans les packages).
+
+## Publication automatique (v3)
+
+`.github/workflows/publish.yml` rend le dashboard et le déploie sur GitHub
+Pages (<https://albanpjy.github.io/claude/>) : sur push (`main` et la branche de
+session), chaque jour ouvré à 18 h UTC (cron), et manuellement
+(`workflow_dispatch`). Points d'attention :
+
+- le cron s'exécute sur le **workflow de la branche par défaut** du dépôt ;
+- Pages est activé par le workflow lui-même (`actions/configure-pages` avec
+  `enablement: true`) — pas de réglage manuel requis ;
+- les packages R viennent en binaire de Posit RSPM (`use-public-rspm`) et sont
+  mis en cache (`actions/cache` sur `R_LIBS_USER`) ; `rmarkdown` est requis en
+  plus des packages du dashboard pour que Quarto exécute les chunks R.
 
 ## Architecture
 
@@ -102,6 +120,9 @@ de marches aléatoires — voir l'historique de session si besoin de le recréer
 
 ## Feuille de route (README)
 
-- v1 (fait) : Vue d'ensemble · v2 (fait) : Théorie, Performance, Risque, Couverture
-- v3 : GitHub Action quotidienne qui re-rend le dashboard et publie `docs/`
-  sur GitHub Pages
+- v1 (fait) : Vue d'ensemble · v2 (fait) : Théorie, Performance, Risque,
+  Couverture · v3 (fait) : publication automatique GitHub Pages + cache des cours
+- Pistes évoquées avec l'utilisateur pour la suite : journal de transactions
+  (`transactions.csv`) avec PMU recalculé, dividendes (`tq_get(get =
+  "dividends")`), onglet Rééquilibrage, Black-Scholes dans l'onglet Couverture.
+  Refusé pour l'instant : `renv`.

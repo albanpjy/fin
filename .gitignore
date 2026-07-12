@@ -1,3 +1,6 @@
+# Cache local des cours Yahoo Finance
+cache_cours.rds
+
 # Sortie Quarto
 /docs/
 /.quarto/

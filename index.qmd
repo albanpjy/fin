@@ -47,15 +47,53 @@ portfolio <- read_csv(
   )
 )
 
-# ---- 2. Téléchargement des cours (Yahoo Finance) -----------------------
+# ---- 2. Cours Yahoo Finance, avec cache quotidien ----------------------
+# Le premier rendu du jour télécharge et enregistre les cours dans
+# cache_cours.rds (ignoré par git) ; les rendus suivants le réutilisent.
+# Supprimer le fichier pour forcer un rafraîchissement.
 n_lignes_csv <- nrow(portfolio)
+cache_fichier <- "cache_cours.rds"
+cache_frais <- file.exists(cache_fichier) &&
+  as.Date(file.mtime(cache_fichier)) == Sys.Date()
 
-prices <- tq_get(
-  unique(portfolio$ticker),
-  from = min(portfolio$date_achat) - days(7),
-  to   = Sys.Date()
-) |>
-  filter(!is.na(close))
+if (cache_frais) {
+  cache  <- readRDS(cache_fichier)
+  prices <- cache$prices
+  bench  <- cache$bench
+} else {
+  prices <- tryCatch(
+    tq_get(
+      unique(portfolio$ticker),
+      from = min(portfolio$date_achat) - days(7),
+      to   = Sys.Date()
+    ) |>
+      filter(!is.na(close)),
+    error = function(e) NULL
+  )
+  bench_brut <- tryCatch(
+    tq_get(indice_marche,
+           from = min(portfolio$date_achat) - days(7),
+           to   = Sys.Date()),
+    error = function(e) NULL
+  )
+  bench <- if (is.data.frame(bench_brut)) {
+    filter(bench_brut, !is.na(close))
+  } else {
+    tibble()
+  }
+
+  if (is.null(prices) && file.exists(cache_fichier)) {
+    warning("Téléchargement impossible — cache du ",
+            format(file.mtime(cache_fichier), "%d/%m/%Y"), " utilisé.")
+    cache  <- readRDS(cache_fichier)
+    prices <- cache$prices
+    bench  <- cache$bench
+  } else if (is.null(prices)) {
+    stop("Impossible de télécharger les cours et aucun cache disponible.")
+  } else {
+    saveRDS(list(prices = prices, bench = bench), cache_fichier)
+  }
+}
 
 # Tickers introuvables sur Yahoo Finance : on les signale et on les écarte
 manquants <- setdiff(unique(portfolio$ticker), unique(prices$symbol))
@@ -139,8 +177,6 @@ valeur_debut_annee <- valeur_quotidienne |>
 perf_ytd <- last(arrange(valeur_quotidienne, date)$valeur) / valeur_debut_annee - 1
 
 # ---- 6. Benchmark (CAC 40) et rendements -------------------------------
-bench <- tq_get(indice_marche, from = date_debut - days(7), to = Sys.Date()) |>
-  filter(!is.na(close))
 if (nrow(bench) == 0) {
   # repli si l'indice est indisponible : l'ETF Monde sert de proxy de marché
   bench <- prices |> filter(symbol == "CW8.PA")
