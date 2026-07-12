@@ -5,10 +5,30 @@ valorisation au dernier cours, plus/moins-values latentes, allocation sectoriell
 évolution de la valeur dans le temps. Les cours sont récupérés gratuitement sur
 Yahoo Finance via [`tidyquant`](https://business-science.github.io/tidyquant/) (aucune clé API nécessaire).
 
-Le portefeuille d'exemple contient les **40 valeurs du CAC 40** (composition au
-22 décembre 2025 : entrée d'Eiffage, sortie d'Edenred) et **4 ETF UCITS** :
-Amundi MSCI World (CW8), BNP Paribas Easy S&P 500 (ESE), Amundi PEA Nasdaq-100 (PANX)
-et Amundi PEA MSCI Emergents (PAEEM).
+Le portefeuille d'exemple contient **10 lignes** : 7 actions du CAC 40
+(Air Liquide, Airbus, BNP Paribas, LVMH, Sanofi, Schneider Electric,
+TotalEnergies) et 3 ETF UCITS (Amundi MSCI World CW8, BNP Paribas Easy S&P 500
+ESE, Amundi PEA MSCI Emergents PAEEM).
+
+## 📑 Les onglets
+
+- **📊 Vue d'ensemble** — valorisation, allocation, évolution, détail des positions
+- **📚 Théorie** — le MEDAF (CAPM) avec formules et exemples, les ratios
+  (volatilité, Sharpe, Sortino, drawdown, VaR/CVaR, alpha/bêta) et la frontière
+  efficiente de Markowitz
+- **📈 Performance** — base 100 vs CAC 40 et MSCI World, rendements mensuels,
+  contribution de chaque ligne
+- **⚠️ Risque** — indicateurs (vol, Sharpe, Sortino, VaR, drawdown), corrélations,
+  MEDAF appliqué ligne par ligne (bêta/alpha vs CAC 40), frontière efficiente
+  simulée (4 000 portefeuilles Monte Carlo) avec votre allocation positionnée
+- **🛡️ Couverture** — les options comme assurance de portefeuille : put
+  protecteur, covered call et collar avec diagrammes de payoff appliqués à la
+  valeur réelle du portefeuille, dimensionnement bêta-ajusté d'une couverture
+  indicielle, scénarios types (vacances, crainte de krach…)
+
+Paramètres ajustables en tête du chunk `setup` d'`index.qmd` : taux sans risque
+(`taux_sans_risque`, 3 % par défaut), indice de marché (`indice_marche`, CAC 40),
+strikes et primes indicatives des options.
 
 ## 🚀 Démarrage rapide
 
@@ -57,8 +77,9 @@ Remplacez les lignes d'exemple par vos vraies positions, puis relancez `quarto r
 
 - [x] **v1 — Vue d'ensemble** : valueboxes (valeur, +/- value, perf YTD), treemap
   sectoriel, répartition Actions/ETF, courbe de valeur, tableau des positions
-- [ ] **v2 — Performance & Risque** : comparaison à un benchmark (MSCI World),
-  rendements mensuels, volatilité, drawdown maximal, ratio de Sharpe, matrice de corrélation
+- [x] **v2 — Théorie, Performance, Risque, Couverture** : MEDAF, ratios et
+  frontière efficiente (théorie + application aux 10 lignes), benchmark,
+  corrélations, VaR, drawdown, stratégies de couverture par options
 - [ ] **v3 — Publication automatique** : GitHub Action quotidienne qui re-génère le
   dashboard à la clôture des marchés et le publie sur GitHub Pages
 

@@ -4,10 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Le projet
 
-Portfolio Tracker : dashboard Quarto en R qui valorise un portefeuille d'actions
-et d'ETF (les 40 valeurs du CAC 40 + 4 ETF UCITS) à partir des cours Yahoo Finance.
-Projet et conversation utilisateur **en français** : interface du dashboard,
-README, messages de commit et échanges se font en français.
+Portfolio Tracker : dashboard Quarto en R qui valorise et analyse un portefeuille
+d'actions et d'ETF (**10 lignes maximum** — contrainte voulue par l'utilisateur :
+7 actions CAC 40 + 3 ETF UCITS) à partir des cours Yahoo Finance. Cinq pages :
+Vue d'ensemble, Théorie (MEDAF, ratios, frontière efficiente — pédagogique),
+Performance, Risque, Couverture (options). Projet et conversation utilisateur
+**en français** : interface du dashboard, README, messages de commit et échanges
+se font en français.
 
 ## Commandes
 
@@ -49,29 +52,56 @@ réutilisés par tous les chunks d'affichage :
    l'écart. Préserver ce comportement défensif : les données Yahoo sont
    régulièrement incomplètes (jour de cotation partiel, ticker renommé) et un NA
    non filtré fait planter les `if` des valueboxes ;
-5. `valeur_quotidienne` — série journalière de la valeur totale depuis le
-   dernier achat (pivot large + `fill()` pour reporter le dernier cours connu
-   les jours sans cotation), base du graphique d'évolution et de la perf YTD.
+5. `prix_larges` / `valeur_quotidienne` — matrice large des cours depuis le
+   dernier achat (pivot + `fill()` pour reporter le dernier cours connu les
+   jours sans cotation) et série journalière de la valeur totale ;
+6. `bench` — l'indice de marché (`indice_marche`, `^FCHI` par défaut) pour le
+   MEDAF et la comparaison base 100, avec **repli sur CW8.PA** si Yahoo ne
+   renvoie rien pour l'indice ;
+7. `rendements`, `r_pf`, `r_bench`, `r_joint` — rendements quotidiens (lignes,
+   portefeuille, marché) qui alimentent tous les indicateurs : Sharpe, Sortino,
+   VaR/CVaR historiques, drawdowns, bêta ;
+8. `medaf` — bêta, rendement attendu MEDAF et alpha de Jensen par ligne ;
+9. la frontière efficiente : simulation Monte Carlo (`set.seed(42)`, 4 000
+   pondérations Dirichlet via `rexp`) sur `mu`/`Sigma` annualisés ;
+10. `payoffs` — les profils put protecteur / covered call / collar appliqués à
+    `total_valeur` (strikes et primes = constantes indicatives du setup :
+    `k_put`, `prime_put`, `k_call`, `prime_call`).
 
-Conventions d'affichage : helpers `eur()` / `pct()` pour le format français
-(espace des milliers, virgule décimale) ; graphiques en `plotly`, tableaux en `DT`.
+Constante clé : `taux_sans_risque` (3 %) en tête du setup — utilisée par Sharpe,
+Sortino, MEDAF et la frontière.
 
-Dans le format dashboard de Quarto, chaque titre `# Niveau 1` est un onglet/page
-(actuellement une seule page « Vue d'ensemble ») — c'est le mécanisme prévu pour
-les pages Performance et Risque de la v2.
+Conventions d'affichage : helpers `eur()` / `pct()` / `num()` pour le format
+français (espace des milliers, virgule décimale) ; graphiques en `plotly`,
+tableaux en `DT`. Palette (guide dataviz interne) : séries catégorielles dans
+l'ordre fixe `#2a78d6` (bleu), `#1baf7a` (aqua), `#eda100` (jaune) ; négatif/perte
+`#e34948` ; divergent corrélations bleu↔rouge avec milieu gris `#f0efec` ;
+séquentiel (frontière) rampe bleue `#cde2fb`→`#104281`. Réutiliser les variables
+`col_*` / `scale_*` du setup plutôt que des hex en dur.
+
+Dans le format dashboard de Quarto, chaque titre `# Niveau 1` est un onglet/page ;
+les pages riches en texte (Théorie, Couverture) utilisent `{scrolling="true"}` et
+des cartes markdown `::: {.card title="…"}` avec formules LaTeX (`$$…$$`).
+Attention : pas de `#| title: !expr` (fragile) — pour un titre dynamique de
+valuebox, passer `title` dans la liste retournée par le chunk.
+
+Vérification sans réseau : en plus du parse-check, un smoke-test du pipeline
+complet sur cours simulés est possible avec le seul package `tidyverse`
+(binaire Ubuntu `r-cran-tidyverse`) en remplaçant `tq_get()` par un générateur
+de marches aléatoires — voir l'historique de session si besoin de le recréer.
 
 ## Données
 
 - Tickers au format **Yahoo Finance** (suffixe `.PA` Paris, `.AS` Amsterdam —
   ArcelorMittal est `MT.AS`). En cas de ligne écartée au rendu, suspecter
   d'abord un ticker d'ETF renommé (fusions de gammes Amundi/Lyxor).
-- La composition du CAC 40 dans `portfolio.csv` date du 22/12/2025 (entrée
-  d'Eiffage, sortie d'Edenred) ; elle évolue à chaque revue trimestrielle
-  d'Euronext (mars, juin, septembre, décembre).
+- Les 7 actions de `portfolio.csv` appartiennent au CAC 40 (composition du
+  22/12/2025) ; l'indice évolue à chaque revue trimestrielle d'Euronext (mars,
+  juin, septembre, décembre). Garder **10 lignes maximum** dans le CSV — les
+  onglets d'analyse (corrélations, frontière, MEDAF) sont dimensionnés pour ça.
 
 ## Feuille de route (README)
 
-- v2 : pages Performance (benchmark, rendements mensuels) et Risque
-  (volatilité, drawdown, Sharpe, corrélations)
+- v1 (fait) : Vue d'ensemble · v2 (fait) : Théorie, Performance, Risque, Couverture
 - v3 : GitHub Action quotidienne qui re-rend le dashboard et publie `docs/`
   sur GitHub Pages

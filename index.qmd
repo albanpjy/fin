@@ -18,9 +18,20 @@ library(tidyquant)
 library(plotly)
 library(DT)
 
+# ---- Paramètres ---------------------------------------------------------
+taux_sans_risque <- 0.03   # taux annuel sans risque (OAT / €STR), ajustable
+indice_marche    <- "^FCHI" # proxy du marché pour le MEDAF : CAC 40
+
+# Palette (guide dataviz : ordre fixe, divergent bleu/rouge, séquentiel bleu)
+col_s1 <- "#2a78d6"; col_s2 <- "#1baf7a"; col_s3 <- "#eda100"
+col_neg <- "#e34948"; col_muted <- "#898781"; col_ink <- "#0b0b0b"
+scale_seq <- list(list(0, "#cde2fb"), list(1, "#104281"))
+scale_div <- list(list(0, "#104281"), list(0.5, "#f0efec"), list(1, "#c0302f"))
+
 # Formatage à la française
 eur <- function(x) paste0(format(round(x), big.mark = " ", scientific = FALSE, trim = TRUE), " €")
 pct <- function(x) paste0(format(round(100 * x, 1), decimal.mark = ",", trim = TRUE), " %")
+num <- function(x, d = 2) format(round(x, d), decimal.mark = ",", trim = TRUE)
 
 # ---- 1. Lecture du portefeuille ----------------------------------------
 portfolio <- read_csv(
@@ -103,13 +114,17 @@ total_pnl_pct <- total_pnl / total_investi
 # ---- 5. Valeur quotidienne du portefeuille -----------------------------
 # Série journalière depuis le dernier achat (portefeuille complet),
 # avec report du dernier cours connu les jours sans cotation.
-valeur_quotidienne <- prices |>
-  filter(symbol %in% positions$ticker, date >= max(positions$date_achat)) |>
+date_debut <- max(positions$date_achat)
+
+prix_larges <- prices |>
+  filter(symbol %in% positions$ticker, date >= date_debut) |>
   select(symbol, date, close) |>
   pivot_wider(names_from = symbol, values_from = close) |>
   arrange(date) |>
   fill(-date, .direction = "down") |>
-  drop_na() |>
+  drop_na()
+
+valeur_quotidienne <- prix_larges |>
   pivot_longer(-date, names_to = "ticker", values_to = "close") |>
   left_join(select(positions, ticker, quantite), by = "ticker") |>
   group_by(date) |>
@@ -122,9 +137,117 @@ valeur_debut_annee <- valeur_quotidienne |>
   pull(valeur)
 
 perf_ytd <- last(arrange(valeur_quotidienne, date)$valeur) / valeur_debut_annee - 1
+
+# ---- 6. Benchmark (CAC 40) et rendements -------------------------------
+bench <- tq_get(indice_marche, from = date_debut - days(7), to = Sys.Date()) |>
+  filter(!is.na(close))
+if (nrow(bench) == 0) {
+  # repli si l'indice est indisponible : l'ETF Monde sert de proxy de marché
+  bench <- prices |> filter(symbol == "CW8.PA")
+}
+
+# Rendements quotidiens : portefeuille, marché et chaque ligne
+r_pf <- valeur_quotidienne |>
+  arrange(date) |>
+  mutate(r = valeur / lag(valeur) - 1) |>
+  drop_na()
+
+r_bench <- bench |>
+  filter(date >= date_debut) |>
+  arrange(date) |>
+  transmute(date, r_m = close / lag(close) - 1) |>
+  drop_na()
+
+rendements <- prix_larges |>
+  mutate(across(-date, ~ .x / lag(.x) - 1)) |>
+  drop_na()
+
+r_joint <- inner_join(select(r_pf, date, r), r_bench, by = "date")
+
+# ---- 7. Indicateurs de risque du portefeuille --------------------------
+rf_j <- taux_sans_risque / 252
+n_j  <- nrow(r_pf)
+
+ret_annualise <- prod(1 + r_pf$r)^(252 / n_j) - 1
+vol_annuelle  <- sd(r_pf$r) * sqrt(252)
+sharpe        <- (ret_annualise - taux_sans_risque) / vol_annuelle
+downside      <- sqrt(mean(pmin(r_pf$r - rf_j, 0)^2)) * sqrt(252)
+sortino       <- (ret_annualise - taux_sans_risque) / downside
+
+var95_pct  <- -quantile(r_pf$r, 0.05, names = FALSE)  # perte quotidienne à 95 %
+var95_eur  <- var95_pct * total_valeur
+cvar95_pct <- -mean(r_pf$r[r_pf$r <= quantile(r_pf$r, 0.05)])
+
+drawdowns <- r_pf |>
+  mutate(cum = cumprod(1 + r), pic = cummax(cum), drawdown = cum / pic - 1)
+dd_max <- min(drawdowns$drawdown)
+
+beta_pf <- cov(r_joint$r, r_joint$r_m) / var(r_joint$r_m)
+
+# ---- 8. MEDAF par ligne (bêta, alpha de Jensen) ------------------------
+ret_marche_annuel <- prod(1 + r_bench$r_m)^(252 / nrow(r_bench)) - 1
+
+medaf <- rendements |>
+  pivot_longer(-date, names_to = "ticker", values_to = "ri") |>
+  inner_join(r_bench, by = "date") |>
+  group_by(ticker) |>
+  summarise(
+    beta        = cov(ri, r_m) / var(r_m),
+    ret_realise = prod(1 + ri)^(252 / n()) - 1,
+    .groups = "drop"
+  ) |>
+  mutate(
+    ret_medaf = taux_sans_risque + beta * (ret_marche_annuel - taux_sans_risque),
+    alpha     = ret_realise - ret_medaf
+  ) |>
+  left_join(select(positions, ticker, nom), by = "ticker") |>
+  arrange(desc(beta))
+
+# ---- 9. Frontière efficiente (simulation Monte Carlo) ------------------
+mat_r <- rendements |> select(-date) |> as.matrix()
+mu    <- colMeans(mat_r) * 252
+Sigma <- cov(mat_r) * 252
+labs_actifs <- positions$nom[match(colnames(mat_r), positions$ticker)]
+
+set.seed(42)
+n_actifs <- ncol(mat_r)
+n_sim    <- 4000
+W <- matrix(rexp(n_sim * n_actifs), ncol = n_actifs)
+W <- W / rowSums(W)
+ret_sim    <- as.vector(W %*% mu)
+vol_sim    <- sqrt(rowSums((W %*% Sigma) * W))
+sharpe_sim <- (ret_sim - taux_sans_risque) / vol_sim
+
+w_pf <- positions$poids[match(colnames(mat_r), positions$ticker)]
+w_pf <- w_pf / sum(w_pf)
+ret_pf_th <- sum(w_pf * mu)
+vol_pf_th <- sqrt(t(w_pf) %*% Sigma %*% w_pf)[1, 1]
+i_tangent <- which.max(sharpe_sim)
+
+# ---- 10. Couverture par options (paramètres indicatifs) ----------------
+k_put <- 0.95; prime_put <- 0.025    # put protecteur : strike 95 %, prime 2,5 %
+k_call <- 1.05; prime_call <- 0.015  # call vendu : strike 105 %, prime 1,5 %
+
+payoffs <- tibble(sc = seq(0.70, 1.30, by = 0.005)) |>
+  mutate(
+    nu       = sc * total_valeur,
+    put_prot = nu + pmax(k_put * total_valeur - nu, 0) - prime_put * total_valeur,
+    covered  = nu + prime_call * total_valeur - pmax(nu - k_call * total_valeur, 0),
+    collar   = nu + pmax(k_put * total_valeur - nu, 0) -
+               pmax(nu - k_call * total_valeur, 0) -
+               (prime_put - prime_call) * total_valeur
+  )
+
+cac_niveau   <- last(arrange(bench, date)$close)
+n_puts_exact <- (total_valeur * beta_pf) / (cac_niveau * 10)
+
+ligne_v <- list(list(
+  type = "line", x0 = 1, x1 = 1, y0 = 0, y1 = 1, yref = "paper",
+  line = list(color = "#c3c2b7", dash = "dot", width = 1)
+))
 ```
 
-# Vue d'ensemble
+# 📊 Vue d'ensemble
 
 ## Row {height="20%"}
 
@@ -199,7 +322,7 @@ plot_ly(
   valeur_quotidienne,
   x = ~date, y = ~valeur,
   type = "scatter", mode = "lines",
-  line = list(color = "#2c6fbb", width = 2),
+  line = list(color = col_s1, width = 2),
   hovertemplate = "%{x|%d/%m/%Y}<br>%{y:,.0f} €<extra></extra>"
 ) |>
   layout(
@@ -220,6 +343,7 @@ positions |>
   plot_ly(
     labels = ~type, values = ~valeur,
     type = "pie", hole = 0.55,
+    marker = list(colors = c(col_s1, col_s2)),
     textinfo = "label+percent",
     hovertemplate = "%{label}<br>%{value:,.0f} €<extra></extra>"
   ) |>
@@ -240,7 +364,7 @@ positions |>
   ) |>
   datatable(
     rownames = FALSE,
-    options = list(pageLength = 15, dom = "ftip"),
+    options = list(pageLength = 15, dom = "tip"),
     class = "compact stripe hover"
   ) |>
   formatCurrency(
@@ -249,3 +373,514 @@ positions |>
   ) |>
   formatPercentage(c("+/- value (%)", "Poids"), digits = 1, dec.mark = ",")
 ```
+
+# 📚 Théorie {scrolling="true"}
+
+## Row
+
+::: {.card title="Le MEDAF — Modèle d'Évaluation Des Actifs Financiers (CAPM)"}
+
+Le MEDAF (Sharpe, 1964) répond à une question simple : **quel rendement exiger d'un
+actif compte tenu de son risque ?** Son idée centrale : seul le **risque
+systématique** (celui du marché, non diversifiable) mérite une rémunération. Le
+risque **spécifique** à une entreprise, lui, disparaît par diversification — le
+marché ne le paie donc pas.
+
+$$E(R_i) = R_f + \beta_i \left[ E(R_m) - R_f \right]$$
+
+- $E(R_i)$ : rendement attendu de l'actif $i$
+- $R_f$ : taux sans risque (OAT, fonds euro…)
+- $E(R_m) - R_f$ : **prime de risque du marché** (historiquement 4 à 6 % par an)
+- $\beta_i$ : sensibilité de l'actif aux mouvements du marché
+
+$$\beta_i = \frac{\mathrm{Cov}(R_i, R_m)}{\mathrm{Var}(R_m)}$$
+
+**Lecture du bêta** : $\beta = 1$, l'actif suit le marché ; $\beta > 1$, il
+amplifie (valeur « offensive », ex. banques, techno) ; $\beta < 1$, il amortit
+(valeur « défensive », ex. santé, utilities) ; $\beta < 0$, il évolue à
+contre-courant (rare : or, certaines stratégies).
+
+**Exemple numérique** — avec $R_f = 3\,\%$, $E(R_m) = 8\,\%$ et une action de
+$\beta = 1{,}3$ :
+$$E(R) = 3\,\% + 1{,}3 \times (8\,\% - 3\,\%) = 9{,}5\,\%$$
+Si cette action rapporte en réalité 12 %, elle dégage un **alpha de Jensen** de
+$12 - 9{,}5 = +2{,}5$ points : elle a fait *mieux* que ce que son risque justifiait.
+
+$$\alpha_i = R_i^{\text{réalisé}} - \left[ R_f + \beta_i (R_m - R_f) \right]$$
+
+**Limites** : le MEDAF suppose des marchés efficients, un seul facteur de risque
+et des rendements gaussiens. Les modèles multi-facteurs (Fama-French) l'affinent,
+mais le bêta reste l'outil de base pour dimensionner une couverture — on s'en
+sert dans l'onglet 🛡️ Couverture.
+
+*→ L'onglet ⚠️ Risque calcule le bêta et l'alpha réels de chacune de vos 10 lignes.*
+
+:::
+
+## Row
+
+::: {.card title="Les ratios et mesures de risque"}
+
+**Volatilité** ($\sigma$) — l'écart-type des rendements, annualisé :
+$\sigma_{an} = \sigma_{jour} \times \sqrt{252}$ (252 jours de bourse par an).
+C'est l'unité de mesure du risque total. *Ordre de grandeur : 5 % pour un fonds
+euro, 15-20 % pour un indice actions, 30 %+ pour une action isolée.*
+
+**Ratio de Sharpe** — le rendement excédentaire obtenu *par unité de risque* :
+$$\text{Sharpe} = \frac{R_p - R_f}{\sigma_p}$$
+*Exemple : rendement 8 %, taux sans risque 3 %, volatilité 12 % → Sharpe = 5/12
+≈ 0,42.* Lecture : < 0,5 médiocre · 0,5 à 1 correct · > 1 bon · > 2 excellent.
+
+**Ratio de Sortino** — même logique, mais ne pénalise que la **volatilité
+baissière** $\sigma^-$ (les jours de hausse ne sont pas un « risque ») :
+$$\text{Sortino} = \frac{R_p - R_f}{\sigma^-_p} \qquad
+\sigma^- = \sqrt{\tfrac{1}{n}\sum \min(r_t - r_{cible}, 0)^2} \times \sqrt{252}$$
+Toujours ≥ Sharpe ; un gros écart entre les deux signale des pertes concentrées.
+
+**Drawdown maximal** — la pire baisse depuis un sommet :
+$DD_t = \frac{V_t}{\max_{s \le t} V_s} - 1$. C'est le ratio « estomac » : un
+drawdown de −40 % exige +67 % pour revenir à l'équilibre.
+
+**VaR — Value at Risk** — la perte que l'on ne dépasse qu'avec une probabilité
+donnée. La VaR historique à 95 % sur 1 jour est le 5^e^ centile des rendements
+quotidiens observés. En version paramétrique (loi normale) :
+$$\text{VaR}_{95\%} = -\left( \mu - 1{,}645\,\sigma \right)$$
+*Exemple : portefeuille de 100 000 €, VaR 95 % 1 jour de 1,8 % → un jour sur
+vingt, la perte dépassera 1 800 €.* La **CVaR** (Expected Shortfall) complète :
+c'est la perte *moyenne* dans ces 5 % de pires cas — toujours plus sévère.
+
+**Alpha et bêta** — voir la carte MEDAF ci-dessus : $\beta$ mesure l'exposition
+au marché, $\alpha$ la sur/sous-performance ajustée du risque.
+
+:::
+
+## Row
+
+::: {.card title="La frontière efficiente (Markowitz, 1952)"}
+
+La diversification est « le seul repas gratuit de la finance ». La variance d'un
+portefeuille n'est **pas** la moyenne des variances : les corrélations comptent.
+
+$$\sigma_p^2 = \sum_i \sum_j w_i \, w_j \, \sigma_{ij}
+\qquad \text{(2 actifs : } \sigma_p^2 = w_1^2\sigma_1^2 + w_2^2\sigma_2^2 + 2 w_1 w_2 \rho\,\sigma_1\sigma_2\text{)}$$
+
+**Exemple** — actif A : 6 % de rendement, 10 % de volatilité ; actif B : 10 % et
+20 % ; corrélation $\rho = 0{,}3$. Un portefeuille 50/50 rapporte 8 % avec une
+volatilité de :
+$$\sigma_p = \sqrt{0{,}25 \times 0{,}01 + 0{,}25 \times 0{,}04 + 2 \times 0{,}25 \times 0{,}3 \times 0{,}1 \times 0{,}2} = 12{,}4\,\%$$
+soit nettement moins que la moyenne des volatilités (15 %) : c'est le **gain de
+diversification**, d'autant plus grand que $\rho$ est faible.
+
+En faisant varier les pondérations $w_i$, chaque combinaison donne un couple
+(risque, rendement). La **frontière efficiente** est l'enveloppe supérieure de ce
+nuage : les portefeuilles qui offrent le rendement maximal pour chaque niveau de
+risque. Deux points remarquables :
+
+- le portefeuille de **variance minimale** (l'extrême gauche de la frontière) ;
+- le portefeuille **tangent**, qui maximise le ratio de Sharpe. Combiné au taux
+  sans risque, il définit la **droite de marché des capitaux** :
+$$E(R_p) = R_f + \frac{E(R_m) - R_f}{\sigma_m} \, \sigma_p$$
+
+En pratique, la frontière se calcule à partir des rendements espérés $\mu$ et de
+la matrice de covariance $\Sigma$ estimés sur l'historique — avec prudence : ces
+estimations sont instables, et la frontière « optimale » d'hier ne l'est plus
+forcément demain.
+
+*→ L'onglet ⚠️ Risque simule 4 000 portefeuilles à partir de vos 10 lignes et
+positionne votre allocation actuelle par rapport à la frontière.*
+
+:::
+
+# 📈 Performance
+
+## Row {height="20%"}
+
+```{r}
+#| content: valuebox
+perf_pf_periode <- last(arrange(valeur_quotidienne, date)$valeur) /
+  first(arrange(valeur_quotidienne, date)$valeur) - 1
+list(
+  title = paste0("Portefeuille depuis le ", format(date_debut, "%d/%m/%Y")),
+  icon  = "briefcase",
+  color = if (perf_pf_periode >= 0) "success" else "danger",
+  value = pct(perf_pf_periode)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "CAC 40 sur la même période"
+b_per <- bench |> filter(date >= date_debut) |> arrange(date)
+perf_bench_periode <- last(b_per$close) / first(b_per$close) - 1
+list(
+  icon  = "flag",
+  color = "light",
+  value = pct(perf_bench_periode)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Rendement annualisé"
+list(
+  icon  = "percent",
+  color = if (ret_annualise >= 0) "success" else "danger",
+  value = pct(ret_annualise)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Meilleure ligne"
+meilleure <- positions |> slice_max(pnl_pct, n = 1)
+list(
+  icon  = "trophy",
+  color = "light",
+  value = paste0(meilleure$nom, " (", pct(meilleure$pnl_pct), ")")
+)
+```
+
+## Row {height="45%"}
+
+```{r}
+#| title: "Base 100 : portefeuille vs CAC 40 vs Monde"
+b100 <- bind_rows(
+  valeur_quotidienne |>
+    arrange(date) |>
+    transmute(date, serie = "Portefeuille", indice = valeur / first(valeur) * 100),
+  bench |>
+    filter(date >= date_debut) |>
+    arrange(date) |>
+    transmute(date, serie = "CAC 40", indice = close / first(close) * 100),
+  prices |>
+    filter(symbol == "CW8.PA", date >= date_debut) |>
+    arrange(date) |>
+    transmute(date, serie = "MSCI World (CW8)", indice = close / first(close) * 100)
+) |>
+  mutate(serie = factor(serie, levels = c("Portefeuille", "CAC 40", "MSCI World (CW8)")))
+
+plot_ly(
+  b100, x = ~date, y = ~indice, color = ~serie,
+  colors = c("Portefeuille" = col_s1, "CAC 40" = col_s2, "MSCI World (CW8)" = col_s3),
+  type = "scatter", mode = "lines", line = list(width = 2),
+  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:.1f}<extra>%{fullData.name}</extra>"
+) |>
+  layout(
+    xaxis = list(title = ""),
+    yaxis = list(title = "Base 100"),
+    legend = list(orientation = "h", x = 0, y = 1.08)
+  )
+```
+
+## Row {height="35%"}
+
+```{r}
+#| title: "Rendements mensuels du portefeuille"
+mensuel <- valeur_quotidienne |>
+  mutate(mois = floor_date(date, "month")) |>
+  group_by(mois) |>
+  summarise(fin = last(valeur), .groups = "drop") |>
+  mutate(r = fin / lag(fin) - 1) |>
+  drop_na()
+
+plot_ly(
+  mensuel, x = ~mois, y = ~r, type = "bar",
+  marker = list(color = ifelse(mensuel$r >= 0, col_s1, col_neg)),
+  hovertemplate = "%{x|%m/%Y}<br>%{y:.1%}<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = ""),
+    yaxis = list(title = "", tickformat = ".0%")
+  )
+```
+
+```{r}
+#| title: "Contribution de chaque ligne (+/- value en €)"
+contrib <- positions |> arrange(pnl)
+
+plot_ly(
+  contrib, x = ~pnl, y = ~factor(nom, levels = contrib$nom),
+  type = "bar", orientation = "h",
+  marker = list(color = ifelse(contrib$pnl >= 0, col_s1, col_neg)),
+  hovertemplate = "%{y}<br>%{x:,.0f} €<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = "", tickformat = ",.0f", ticksuffix = " €"),
+    yaxis = list(title = "")
+  )
+```
+
+# ⚠️ Risque {scrolling="true"}
+
+## Row {height="120px"}
+
+```{r}
+#| content: valuebox
+#| title: "Volatilité annualisée"
+list(icon = "activity", color = "light", value = pct(vol_annuelle))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Drawdown maximal"
+list(icon = "arrow-down-right", color = "danger", value = pct(dd_max))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Ratio de Sharpe"
+list(
+  icon  = "speedometer2",
+  color = if (sharpe >= 1) "success" else if (sharpe >= 0.5) "light" else "warning",
+  value = num(sharpe)
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Ratio de Sortino"
+list(icon = "speedometer", color = "light", value = num(sortino))
+```
+
+```{r}
+#| content: valuebox
+#| title: "VaR 95 % (1 jour)"
+list(
+  icon  = "exclamation-triangle",
+  color = "warning",
+  value = paste0(eur(var95_eur), " (", pct(var95_pct), ")")
+)
+```
+
+## Row {height="380px"}
+
+```{r}
+#| title: "Drawdown : baisse depuis le dernier sommet"
+plot_ly(
+  drawdowns, x = ~date, y = ~drawdown,
+  type = "scatter", mode = "lines", fill = "tozeroy",
+  line = list(color = col_neg, width = 2),
+  fillcolor = "rgba(227, 73, 72, 0.15)",
+  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:.1%}<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = ""),
+    yaxis = list(title = "", tickformat = ".0%")
+  )
+```
+
+```{r}
+#| title: "Corrélations entre les lignes"
+corr <- cor(mat_r)
+
+plot_ly(
+  x = labs_actifs, y = labs_actifs, z = round(corr, 2),
+  type = "heatmap", zmin = -1, zmax = 1,
+  colorscale = scale_div,
+  hovertemplate = "%{y} × %{x}<br>ρ = %{z:.2f}<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = "", tickangle = -40),
+    yaxis = list(title = "")
+  )
+```
+
+## Row {height="auto"}
+
+```{r}
+#| title: "MEDAF appliqué : bêta et alpha de chaque ligne (marché : CAC 40, taux sans risque : paramètre du fichier)"
+medaf |>
+  select(
+    Ligne = nom, `Bêta` = beta,
+    `Rendement réalisé (ann.)` = ret_realise,
+    `Rendement MEDAF attendu` = ret_medaf,
+    `Alpha (ann.)` = alpha
+  ) |>
+  datatable(
+    rownames = FALSE,
+    options = list(dom = "t", pageLength = 15),
+    class = "compact stripe hover"
+  ) |>
+  formatRound("Bêta", digits = 2, dec.mark = ",") |>
+  formatPercentage(
+    c("Rendement réalisé (ann.)", "Rendement MEDAF attendu", "Alpha (ann.)"),
+    digits = 1, dec.mark = ","
+  )
+```
+
+## Row {height="480px"}
+
+```{r}
+#| title: "Frontière efficiente : 4 000 portefeuilles simulés à partir de vos 10 lignes"
+plot_ly() |>
+  add_markers(
+    x = vol_sim, y = ret_sim,
+    marker = list(
+      size = 4, opacity = 0.45,
+      color = sharpe_sim, colorscale = scale_seq,
+      colorbar = list(title = "Sharpe", len = 0.7)
+    ),
+    name = "Portefeuilles simulés", hoverinfo = "skip"
+  ) |>
+  add_trace(
+    x = sqrt(diag(Sigma)), y = mu,
+    type = "scatter", mode = "markers+text",
+    text = labs_actifs, textposition = "top center",
+    textfont = list(size = 10, color = col_muted),
+    marker = list(size = 8, color = "#52514e", symbol = "diamond"),
+    name = "Lignes individuelles",
+    hovertemplate = "%{text}<br>Vol. %{x:.1%} · Rdt %{y:.1%}<extra></extra>"
+  ) |>
+  add_markers(
+    x = vol_sim[i_tangent], y = ret_sim[i_tangent],
+    marker = list(size = 12, color = "#008300", symbol = "triangle-up"),
+    name = "Max Sharpe simulé",
+    hovertemplate = "Portefeuille tangent (simulé)<br>Vol. %{x:.1%} · Rdt %{y:.1%}<extra></extra>"
+  ) |>
+  add_markers(
+    x = vol_pf_th, y = ret_pf_th,
+    marker = list(size = 15, color = col_ink, symbol = "star"),
+    name = "Votre portefeuille",
+    hovertemplate = "Votre allocation actuelle<br>Vol. %{x:.1%} · Rdt %{y:.1%}<extra></extra>"
+  ) |>
+  layout(
+    xaxis = list(title = "Volatilité annualisée", tickformat = ".0%"),
+    yaxis = list(title = "Rendement annualisé (historique)", tickformat = ".0%"),
+    legend = list(orientation = "h", x = 0, y = 1.1)
+  )
+```
+
+# 🛡️ Couverture {scrolling="true"}
+
+## Row
+
+::: {.card title="Les options en deux mots"}
+
+Une **option** est un contrat qui donne le **droit** (pas l'obligation) d'acheter
+(**call**) ou de vendre (**put**) un actif à un prix fixé (le **strike** $K$)
+jusqu'à une échéance donnée, contre le paiement immédiat d'une **prime**.
+
+$$\text{Payoff}_{put} = \max(K - S_T,\, 0) \qquad
+\text{Payoff}_{call} = \max(S_T - K,\, 0)$$
+
+où $S_T$ est le cours à l'échéance. Un put prend donc de la valeur quand le
+marché **baisse** : c'est une **assurance de portefeuille** — la prime est la
+cotisation, le strike la franchise.
+
+**Pourquoi couvrir plutôt que vendre ?** Vendre ses titres pour éviter une baisse
+a des coûts cachés : fiscalité sur les plus-values, risque de rater le rebond,
+frais de transaction. Une couverture temporaire par options conserve le
+portefeuille en l'état. Situations typiques :
+
+- 🏖️ **Départ en vacances** : impossible de suivre le marché pendant 2 semaines →
+  achat de puts courts (1 mois), on « verrouille » un plancher ;
+- 📉 **Crainte de krach** (valorisation tendue, échéance politique…) → put
+  protecteur, ou **collar** pour réduire le coût ;
+- 💰 **Plus-value à sécuriser** avant une dépense prévue → collar serré, qui fige
+  la valeur dans un tunnel.
+
+Les trois stratégies de base sont comparées ci-dessous, appliquées à la valeur
+actuelle de votre portefeuille. Les primes utilisées (2,5 % pour un put à 95 %,
+1,5 % pour un call à 105 %, échéance ~3 mois) sont **des ordres de grandeur
+indicatifs** — les vraies primes dépendent de la volatilité implicite du moment.
+
+:::
+
+## Row {height="440px"}
+
+```{r}
+#| title: "Put protecteur : un plancher contre le krach"
+plot_ly(payoffs) |>
+  add_lines(
+    x = ~sc, y = ~nu, name = "Sans couverture",
+    line = list(color = col_muted, width = 2, dash = "dash"),
+    hovertemplate = "Marché %{x:.0%}<br>%{y:,.0f} €<extra>Sans couverture</extra>"
+  ) |>
+  add_lines(
+    x = ~sc, y = ~put_prot, name = "Avec put protecteur (K = 95 %)",
+    line = list(color = col_s1, width = 2),
+    hovertemplate = "Marché %{x:.0%}<br>%{y:,.0f} €<extra>Put protecteur</extra>"
+  ) |>
+  layout(
+    shapes = ligne_v,
+    xaxis = list(title = "Niveau du marché à l'échéance", tickformat = ".0%"),
+    yaxis = list(title = "Valeur du portefeuille", tickformat = ",.0f", ticksuffix = " €"),
+    legend = list(orientation = "h", x = 0, y = 1.12)
+  )
+```
+
+```{r}
+#| title: "Covered call et collar : financer la protection"
+plot_ly(payoffs) |>
+  add_lines(
+    x = ~sc, y = ~nu, name = "Sans couverture",
+    line = list(color = col_muted, width = 2, dash = "dash"),
+    hovertemplate = "Marché %{x:.0%}<br>%{y:,.0f} €<extra>Sans couverture</extra>"
+  ) |>
+  add_lines(
+    x = ~sc, y = ~covered, name = "Covered call (vente call 105 %)",
+    line = list(color = col_s2, width = 2),
+    hovertemplate = "Marché %{x:.0%}<br>%{y:,.0f} €<extra>Covered call</extra>"
+  ) |>
+  add_lines(
+    x = ~sc, y = ~collar, name = "Collar (put 95 % financé par call 105 %)",
+    line = list(color = col_s3, width = 2),
+    hovertemplate = "Marché %{x:.0%}<br>%{y:,.0f} €<extra>Collar</extra>"
+  ) |>
+  layout(
+    shapes = ligne_v,
+    xaxis = list(title = "Niveau du marché à l'échéance", tickformat = ".0%"),
+    yaxis = list(title = "Valeur du portefeuille", tickformat = ",.0f", ticksuffix = " €"),
+    legend = list(orientation = "h", x = 0, y = 1.12)
+  )
+```
+
+## Row
+
+::: {.card title="Application à votre portefeuille : dimensionner la couverture"}
+
+La couverture indicielle s'ajuste avec le **bêta** (cf. onglet 📚 Théorie) : un
+portefeuille qui amplifie le marché demande plus de protection qu'un portefeuille
+défensif.
+
+$$N_{puts} = \frac{V_{portefeuille} \times \beta}{\text{Niveau de l'indice} \times \text{quotité}}$$
+
+Avec vos chiffres du jour — portefeuille de **`r eur(total_valeur)`**, bêta de
+**`r num(beta_pf)`** contre le CAC 40, indice à **`r format(round(cac_niveau), big.mark = " ")` points**
+et des options sur indice CAC 40 (PXA, quotité de 10 € par point) :
+
+$$N_{puts} = \frac{`r format(round(total_valeur), big.mark = " ")` \times `r num(beta_pf)`}{`r format(round(cac_niveau), big.mark = " ")` \times 10} \approx `r num(n_puts_exact)` \text{ contrat(s)}$$
+
+`r if (n_puts_exact < 1) paste0("**Moins d'un contrat !** C'est la limite classique des options sur indice pour un portefeuille de cette taille : un seul put PXA couvre environ ", eur(cac_niveau * 10), " d'exposition. Alternatives adaptées aux petits portefeuilles : options sur actions individuelles (quotité de 100 titres) pour couvrir vos plus grosses lignes, produits de bourse à levier baissier en petites coupures, augmentation temporaire de la poche cash — ou simplement accepter le risque si l'horizon est long.") else paste0("Arrondi à **", ceiling(n_puts_exact), " contrat(s)**. Coût indicatif de l'assurance (put 3 mois, strike 95 %) : environ ", eur(prime_put * total_valeur), ", soit ", pct(prime_put), " du portefeuille.")`
+
+**Check-list avant de couvrir** : ① définir l'événement redouté et son horizon
+(2 semaines de vacances ≠ 6 mois d'incertitude) ; ② choisir le strike — plus il
+est proche du cours, plus l'assurance est chère ; ③ comparer le coût de la prime
+à la perte maximale acceptable ; ④ solder ou faire rouler la position à l'échéance.
+
+:::
+
+## Row
+
+::: {.card title="Quelle stratégie pour quelle situation ?"}
+
+| Situation | Stratégie | Coût | Ce qu'on garde | Ce qu'on abandonne |
+|---|---|---|---|---|
+| 🏖️ Vacances 2 semaines, marché calme | Put légèrement hors de la monnaie, échéance courte | Faible (~0,5-1 %) | Toute la hausse | La prime |
+| 📉 Crainte de krach à 3-6 mois | Put protecteur strike 90-95 % | Moyen (~2-3 %) | La hausse, moins la prime | La prime |
+| 💶 Budget prime limité | **Collar** : put financé par la vente d'un call | ≈ 0 | Un tunnel de valeur | La hausse au-delà du call |
+| 😐 Marché attendu stable/mou | **Covered call** : vente de calls couverts | Négatif (on encaisse) | La prime + une hausse plafonnée | La hausse au-delà du strike |
+| 🌊 Baisse structurelle anticipée | Réduire l'exposition (vendre), pas des options | Fiscalité éventuelle | — | — |
+
+**Trois pièges classiques** : la couverture permanente (les primes cumulées
+mangent la performance long terme — assurer 12 mois par an coûte 5 à 10 % l'an) ;
+le strike trop optimiste (un put à 80 % ne protège que d'un vrai krach) ; oublier
+l'échéance (une protection expirée ne protège plus).
+
+> ⚠️ **Avertissement** — Contenu pédagogique, pas un conseil en investissement.
+> Les options comportent des risques spécifiques (levier, perte totale de la
+> prime, assignation pour les ventes de calls) et nécessitent un compte-titres
+> avec l'autorisation adéquate. Primes et fiscalité réelles à vérifier auprès de
+> votre courtier.
+
+:::
