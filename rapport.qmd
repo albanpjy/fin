@@ -83,7 +83,7 @@ soit une plus-value latente de **`r eur(total_pnl)` (`r pct(total_pnl_pct)`)**.
 Depuis le 1^er^ janvier, la performance s'établit à **`r pct(perf_ytd)`**.
 
 ```{r}
-#| label: tbl-synthese
+#| label: table-synthese
 
 # Les indicateurs calculés par le pipeline, mis en forme à la française.
 # knitr::kable + booktabs : le standard des tableaux LaTeX soignés.
@@ -115,7 +115,7 @@ tibble(
 # Positions
 
 ```{r}
-#| label: tbl-positions
+#| label: table-positions
 
 # Chaque colonne est formatée en amont (chaînes de caractères) pour un
 # contrôle total de la typographie : espaces des milliers, virgules…
@@ -244,7 +244,7 @@ ggplot(corr_long, aes(n1, n2, fill = rho)) +
 ```
 
 ```{r}
-#| label: tbl-medaf
+#| label: table-medaf
 
 # Bêta > 1 : la ligne amplifie le CAC 40 ; alpha > 0 : elle a fait mieux
 # que ce que son niveau de risque laissait espérer (cf. dashboard, onglet
