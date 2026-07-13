@@ -1,0 +1,353 @@
+---
+title: "Portfolio Tracker"
+subtitle: "Rapport quotidien de suivi de portefeuille"
+author: "Alban VIDELOUP"
+date: today
+lang: fr
+format:
+  pdf:
+    documentclass: scrartcl
+    classoption: ["DIV=11", "parskip=half"]
+    papersize: a4
+    fontsize: 11pt
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    colorlinks: true
+    fig-pos: "H"
+    include-in-header:
+      text: |
+        \usepackage{microtype}
+        \setkomafont{disposition}{\rmfamily\bfseries}
+        \addtokomafont{caption}{\small}
+        \setcapindent{0pt}
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig.width: 6.3
+    fig.height: 3.4
+---
+
+```{r}
+#| label: setup
+
+# ============================================================================
+# PORTFOLIO TRACKER — rapport PDF quotidien
+# Auteur : Alban VIDELOUP
+#
+# Ce document est le pendant IMPRIMABLE du dashboard HTML : mêmes données,
+# mêmes calculs (le pipeline partagé R/pipeline.R), mais des graphiques
+# statiques ggplot2 adaptés au papier et une mise en page LaTeX.
+# Il est régénéré chaque jour de bourse par la GitHub Action et archivé,
+# horodaté, dans le dossier exports/.
+# ============================================================================
+
+# Le pipeline complet — voir R/pipeline.R pour les explications détaillées.
+source("R/pipeline.R", encoding = "UTF-8")
+
+# ---- Habillage ggplot2 commun à tous les graphiques du rapport -------------
+# Un thème sobre : pas de quadrillage secondaire, titres discrets, légende
+# au-dessus du graphique (comme dans le dashboard).
+theme_set(
+  theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot",
+      axis.title = element_text(color = "#52514e", size = 9),
+      legend.position = "top",
+      legend.justification = "left",
+      legend.title = element_blank()
+    )
+)
+
+# Étiquettes d'axes au format français (réutilisées partout).
+lab_eur  <- scales::label_number(big.mark = " ", suffix = " €", accuracy = 1)
+lab_pct  <- scales::label_percent(accuracy = 1, decimal.mark = ",", suffix = " %")
+lab_pct1 <- scales::label_percent(accuracy = 0.1, decimal.mark = ",", suffix = " %")
+```
+
+> *`r info_donnees`.*
+
+# Synthèse
+
+Le portefeuille (`r nrow(positions)` lignes : `r sum(positions$type == "Action")`
+actions et `r sum(positions$type == "ETF")` ETF) est valorisé
+**`r eur(total_valeur)`**, pour un capital investi de `r eur(total_investi)`,
+soit une plus-value latente de **`r eur(total_pnl)` (`r pct(total_pnl_pct)`)**.
+Depuis le 1^er^ janvier, la performance s'établit à **`r pct(perf_ytd)`**.
+
+```{r}
+#| label: tbl-synthese
+#| tbl-cap: "Indicateurs clés du portefeuille"
+
+# Les indicateurs calculés par le pipeline, mis en forme à la française.
+# knitr::kable + booktabs : le standard des tableaux LaTeX soignés.
+tibble(
+  Indicateur = c(
+    "Valeur du portefeuille", "Capital investi", "Plus/moins-value latente",
+    "Performance depuis le 1er janvier", "Rendement annualisé",
+    "Volatilité annualisée", "Ratio de Sharpe", "Ratio de Sortino",
+    "VaR 95 % (1 jour)", "CVaR 95 % (1 jour)", "Drawdown maximal",
+    "Bêta (vs CAC 40)"
+  ),
+  Valeur = c(
+    eur(total_valeur), eur(total_investi),
+    paste0(eur(total_pnl), " (", pct(total_pnl_pct), ")"),
+    pct(perf_ytd), pct(ret_annualise), pct(vol_annuelle),
+    num(sharpe), num(sortino),
+    paste0(eur(var95_eur), " (", pct(var95_pct), ")"),
+    pct(cvar95_pct), pct(dd_max), num(beta_pf)
+  )
+) |>
+  knitr::kable(booktabs = TRUE, linesep = "", align = "lr")
+```
+
+# Positions
+
+```{r}
+#| label: tbl-positions
+#| tbl-cap: "Détail des positions, triées par valeur décroissante"
+
+# Chaque colonne est formatée en amont (chaînes de caractères) pour un
+# contrôle total de la typographie : espaces des milliers, virgules…
+positions |>
+  arrange(desc(valeur)) |>
+  transmute(
+    Ligne = nom, Ticker = ticker, `Qté` = quantite,
+    PMU = eur(pmu), Cours = eur(cours), Valeur = eur(valeur),
+    `+/- value` = paste0(eur(pnl), " (", pct(pnl_pct), ")"),
+    Poids = pct(poids)
+  ) |>
+  knitr::kable(booktabs = TRUE, linesep = "", align = "llrrrrrr")
+```
+
+```{r}
+#| label: fig-allocation
+#| fig-cap: "Répartition du portefeuille par ligne et par type d'actif"
+#| fig-height: 2.9
+
+# Barres horizontales triées : l'équivalent imprimable du treemap du
+# dashboard. La couleur distingue actions et ETF (ordre fixe de la palette).
+ggplot(positions, aes(valeur, reorder(nom, valeur), fill = type)) +
+  geom_col(width = 0.72) +
+  scale_fill_manual(values = c("Action" = col_s1, "ETF" = col_s2)) +
+  scale_x_continuous(labels = lab_eur, expand = expansion(mult = c(0, 0.05))) +
+  labs(x = "Valeur de marché", y = NULL)
+```
+
+# Performance
+
+```{r}
+#| label: fig-evolution
+#| fig-cap: "Valeur quotidienne du portefeuille depuis sa constitution complète"
+
+# La série calculée en section 5 du pipeline (report du dernier cours connu
+# les jours sans cotation).
+ggplot(valeur_quotidienne, aes(date, valeur)) +
+  geom_line(color = col_s1, linewidth = 0.6) +
+  scale_y_continuous(labels = lab_eur) +
+  labs(x = NULL, y = "Valeur du portefeuille")
+```
+
+```{r}
+#| label: fig-base100
+#| fig-cap: "Comparaison en base 100 : portefeuille, CAC 40 et MSCI World (CW8)"
+
+# Base 100 : toutes les séries partent de 100 (cf. pipeline, section 11) ;
+# 112 en fin de courbe se lit « +12 % depuis le départ ».
+ggplot(b100, aes(date, indice, color = serie)) +
+  geom_line(linewidth = 0.6) +
+  scale_color_manual(
+    values = c("Portefeuille" = col_s1, "CAC 40" = col_s2,
+               "MSCI World (CW8)" = col_s3)
+  ) +
+  labs(x = NULL, y = "Base 100")
+```
+
+```{r}
+#| label: fig-mensuel
+#| fig-cap: "Rendements mensuels du portefeuille (bleu : mois positifs, rouge : négatifs)"
+#| fig-height: 2.7
+
+ggplot(mensuel, aes(mois, r, fill = r >= 0)) +
+  geom_col(width = 22, show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = col_s1, "FALSE" = col_neg)) +
+  scale_y_continuous(labels = lab_pct) +
+  labs(x = NULL, y = "Rendement mensuel")
+```
+
+```{r}
+#| label: fig-contrib
+#| fig-cap: "Contribution de chaque ligne à la plus/moins-value totale"
+#| fig-height: 2.9
+
+ggplot(contrib, aes(pnl, factor(nom, levels = contrib$nom), fill = pnl >= 0)) +
+  geom_col(width = 0.72, show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = col_s1, "FALSE" = col_neg)) +
+  scale_x_continuous(labels = lab_eur) +
+  labs(x = "Plus/moins-value latente", y = NULL)
+```
+
+# Risque
+
+```{r}
+#| label: fig-drawdown
+#| fig-cap: "Drawdown : baisse du portefeuille par rapport à son dernier sommet"
+#| fig-height: 2.7
+
+# La courbe vaut 0 quand le portefeuille est à son plus haut historique ;
+# le point le plus bas est le drawdown maximal du tableau de synthèse.
+ggplot(drawdowns, aes(date, drawdown)) +
+  geom_area(fill = col_neg, alpha = 0.15) +
+  geom_line(color = col_neg, linewidth = 0.6) +
+  scale_y_continuous(labels = lab_pct) +
+  labs(x = NULL, y = "Drawdown")
+```
+
+```{r}
+#| label: fig-correlations
+#| fig-cap: "Corrélations des rendements quotidiens entre les lignes"
+#| fig-height: 4.6
+
+# Échelle divergente : bleu = corrélation négative (diversifiant),
+# gris = nulle, rouge = positive. Deux lignes très « rouges » entre elles
+# font double emploi dans le portefeuille.
+corr_long <- as_tibble(corr, rownames = "t1") |>
+  pivot_longer(-t1, names_to = "t2", values_to = "rho") |>
+  mutate(
+    n1 = factor(positions$nom[match(t1, positions$ticker)], levels = labs_actifs),
+    n2 = factor(positions$nom[match(t2, positions$ticker)], levels = labs_actifs)
+  )
+
+ggplot(corr_long, aes(n1, n2, fill = rho)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  geom_text(aes(label = format(round(rho, 2), decimal.mark = ",")), size = 2.3) +
+  scale_fill_gradient2(
+    low = "#104281", mid = "#f0efec", high = "#c0302f",
+    midpoint = 0, limits = c(-1, 1), guide = "none"
+  ) +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs(x = NULL, y = NULL)
+```
+
+```{r}
+#| label: tbl-medaf
+#| tbl-cap: "MEDAF appliqué ligne par ligne (marché : CAC 40, taux sans risque : 3 %)"
+
+# Bêta > 1 : la ligne amplifie le CAC 40 ; alpha > 0 : elle a fait mieux
+# que ce que son niveau de risque laissait espérer (cf. dashboard, onglet
+# Théorie, pour les formules et exemples).
+medaf |>
+  transmute(
+    Ligne = nom, `Bêta` = num(beta),
+    `Rendement réalisé (ann.)` = pct(ret_realise),
+    `Rendement MEDAF` = pct(ret_medaf),
+    Alpha = pct(alpha)
+  ) |>
+  knitr::kable(booktabs = TRUE, linesep = "", align = "lrrrr")
+```
+
+```{r}
+#| label: fig-frontiere
+#| fig-cap: "Frontière efficiente : 4 000 portefeuilles simulés (Monte Carlo). Étoile noire : allocation actuelle ; triangle vert : meilleur Sharpe simulé ; losanges : lignes individuelles."
+#| fig-height: 4.2
+
+# Le nuage des simulations, coloré par ratio de Sharpe (rampe bleue) ;
+# l'enveloppe supérieure du nuage est la frontière efficiente.
+sim    <- tibble(vol = vol_sim, ret = ret_sim, sharpe = sharpe_sim)
+actifs <- tibble(vol = sqrt(diag(Sigma)), ret = mu, nom = labs_actifs)
+
+ggplot(sim, aes(vol, ret)) +
+  geom_point(aes(color = sharpe), size = 0.5, alpha = 0.5) +
+  scale_color_gradient(low = "#cde2fb", high = "#104281", name = "Sharpe") +
+  geom_point(data = actifs, aes(vol, ret), inherit.aes = FALSE,
+             shape = 18, size = 2.4, color = "#52514e") +
+  geom_text(data = actifs, aes(vol, ret, label = nom), inherit.aes = FALSE,
+            size = 2.4, vjust = -1, color = col_muted) +
+  annotate("point", x = vol_sim[i_tangent], y = ret_sim[i_tangent],
+           shape = 17, size = 2.8, color = "#008300") +
+  annotate("point", x = vol_pf_th, y = ret_pf_th,
+           shape = 8, size = 3, stroke = 1, color = col_ink) +
+  scale_x_continuous(labels = lab_pct) +
+  scale_y_continuous(labels = lab_pct) +
+  theme(legend.position = "right") +
+  labs(x = "Volatilité annualisée", y = "Rendement annualisé (historique)")
+```
+
+# Couverture par options
+
+Le put protecteur crée un **plancher** sous le portefeuille moyennant une
+prime ; le **collar** finance ce put par la vente d'un call, au prix d'un
+**plafond** sur la hausse ; le **covered call** encaisse une prime en
+échange de ce même plafond. Primes indicatives : put à 95 % ≈ 2,5 %,
+call à 105 % ≈ 1,5 % (échéance ~3 mois).
+
+```{r}
+#| label: fig-put
+#| fig-cap: "Put protecteur (strike 95 %) : un plancher contre la baisse"
+#| fig-height: 2.9
+
+# Profils calculés en section 10 du pipeline sur la valeur RÉELLE du
+# portefeuille. Pointillés gris : sans couverture.
+ggplot(payoffs, aes(sc)) +
+  geom_line(aes(y = nu, linetype = "Sans couverture"), color = col_muted, linewidth = 0.6) +
+  geom_line(aes(y = put_prot, linetype = "Put protecteur"), color = col_s1, linewidth = 0.7) +
+  scale_linetype_manual(values = c("Sans couverture" = "dashed", "Put protecteur" = "solid")) +
+  geom_vline(xintercept = 1, linetype = "dotted", color = "#c3c2b7") +
+  scale_x_continuous(labels = lab_pct) +
+  scale_y_continuous(labels = lab_eur) +
+  labs(x = "Niveau du marché à l'échéance", y = "Valeur du portefeuille")
+```
+
+```{r}
+#| label: fig-collar
+#| fig-cap: "Covered call et collar : financer la protection"
+#| fig-height: 2.9
+
+pay_long <- payoffs |>
+  select(sc, `Sans couverture` = nu, `Covered call (105 %)` = covered,
+         `Collar (95 % / 105 %)` = collar) |>
+  pivot_longer(-sc, names_to = "strategie", values_to = "valeur") |>
+  mutate(strategie = factor(strategie, levels = c(
+    "Sans couverture", "Covered call (105 %)", "Collar (95 % / 105 %)"
+  )))
+
+ggplot(pay_long, aes(sc, valeur, color = strategie, linetype = strategie)) +
+  geom_line(linewidth = 0.65) +
+  scale_color_manual(values = c(
+    "Sans couverture" = col_muted, "Covered call (105 %)" = col_s2,
+    "Collar (95 % / 105 %)" = col_s3
+  )) +
+  scale_linetype_manual(values = c(
+    "Sans couverture" = "dashed", "Covered call (105 %)" = "solid",
+    "Collar (95 % / 105 %)" = "solid"
+  )) +
+  geom_vline(xintercept = 1, linetype = "dotted", color = "#c3c2b7") +
+  scale_x_continuous(labels = lab_pct) +
+  scale_y_continuous(labels = lab_eur) +
+  labs(x = "Niveau du marché à l'échéance", y = "Valeur du portefeuille")
+```
+
+**Dimensionnement d'une couverture indicielle** (options PXA sur CAC 40,
+quotité de 10 € par point) — avec les chiffres du jour, portefeuille de
+`r eur(total_valeur)` et bêta de `r num(beta_pf)`, indice à
+`r format(round(cac_niveau), big.mark = " ")` points :
+
+$$N_{puts} = \frac{V_{portefeuille} \times \beta}{\text{Indice} \times \text{quotité}}
+= \frac{`r format(round(total_valeur), big.mark = " ")` \times `r num(beta_pf)`}{`r format(round(cac_niveau), big.mark = " ")` \times 10}
+\approx `r num(n_puts_exact)` \text{ contrat(s)}$$
+
+`r if (n_puts_exact < 1) paste0("Moins d'un contrat : pour un portefeuille de cette taille, la couverture indicielle est surdimensionnée (un put PXA couvre environ ", eur(cac_niveau * 10), " d'exposition). Alternatives : options sur actions individuelles (quotité de 100 titres), produits de bourse baissiers en petites coupures, ou augmentation temporaire de la poche de liquidités.") else paste0("Soit ", ceiling(n_puts_exact), " contrat(s) après arrondi. Coût indicatif de l'assurance (put 3 mois, strike 95 %) : environ ", eur(prime_put * total_valeur), ", soit ", pct(prime_put), " du portefeuille.")`
+
+---
+
+*Rapport généré automatiquement à partir des cours Yahoo Finance — document
+pédagogique rédigé par Alban VIDELOUP, ne constitue pas un conseil en
+investissement. Le dashboard interactif complet (théorie du MEDAF, ratios,
+frontière efficiente) est consultable sur*
+<https://albanpjy.github.io/fin/>.

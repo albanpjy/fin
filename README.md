@@ -9,6 +9,12 @@ automatiquement du lundi au vendredi à 18 h UTC (après la clôture d'Euronext)
 par une GitHub Action, et à chaque push. La date et l'heure de récupération
 des données Yahoo Finance sont affichées en tête de l'onglet Vue d'ensemble.
 
+**📄 Rapport PDF quotidien** — un rapport imprimable (LaTeX, graphiques
+ggplot2) est généré avec les mêmes données que le dashboard : accessible via
+le bouton « Rapport PDF » de la barre du dashboard, et archivé chaque jour de
+bourse dans [`exports/`](exports/) sous un nom horodaté
+(`portfolio-tracker_AAAA-MM-JJ.pdf`).
+
 Dashboard [Quarto](https://quarto.org/) en R pour suivre un portefeuille d'actions et d'ETF :
 valorisation au dernier cours, plus/moins-values latentes, allocation sectorielle et
 évolution de la valeur dans le temps. Les cours sont récupérés gratuitement sur
@@ -49,6 +55,11 @@ install.packages(c("tidyverse", "tidyquant", "plotly", "DT"))
 ```
 
 ```bash
+# Pour compiler le rapport PDF en local (une seule fois) : LaTeX via TinyTeX
+quarto install tinytex
+```
+
+```bash
 # Dans un terminal, à la racine du projet
 quarto preview        # rendu + rechargement automatique dans le navigateur
 # ou
@@ -80,12 +91,15 @@ dizaine de lignes — un avertissement s'affiche au rendu si vous dépassez.
 ## 🗂️ Structure du projet
 
 ```
-├── .github/workflows/publish.yml  # rendu quotidien + déploiement GitHub Pages
+├── .github/workflows/publish.yml  # rendu quotidien + déploiement + archive PDF
 ├── _quarto.yml                    # configuration Quarto (sortie dans docs/)
-├── index.qmd                      # le dashboard (5 onglets)
+├── R/pipeline.R                   # LE pipeline de calculs, partagé HTML/PDF
+├── index.qmd                      # le dashboard HTML (5 onglets, plotly)
+├── rapport.qmd                    # le rapport PDF quotidien (LaTeX, ggplot2)
 ├── portfolio.csv                  # les positions du portefeuille
+├── exports/                       # archives PDF horodatées (1 / jour de bourse)
 ├── cache_cours.rds                # cache local des cours (non versionné)
-└── docs/                          # sortie HTML générée (non versionnée)
+└── docs/                          # sorties générées (non versionnées)
 ```
 
 💡 Les cours sont mis en cache une journée (`cache_cours.rds`) : le premier

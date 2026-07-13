@@ -45,11 +45,32 @@ jobs:
             if (length(manquants) > 0) install.packages(manquants)
           '
 
-      - name: Installer Quarto
+      - name: Installer Quarto et TinyTeX (LaTeX pour le rapport PDF)
         uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          tinytex: true
 
-      - name: Rendre le dashboard
+      - name: Rendre le dashboard et le rapport PDF
         run: quarto render
+
+      # Archive quotidienne : une copie horodatée du rapport PDF est commitée
+      # dans exports/ (branche main uniquement). Le « [skip ci] » du message
+      # de commit empêche ce push de re-déclencher le workflow en boucle.
+      - name: Archiver le rapport PDF du jour
+        if: github.ref == 'refs/heads/main'
+        run: |
+          DATE=$(date +%F)
+          mkdir -p exports
+          cp docs/rapport.pdf "exports/portfolio-tracker_${DATE}.pdf"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add exports
+          if git diff --staged --quiet; then
+            echo "Rapport du jour déjà archivé à l'identique — rien à committer."
+          else
+            git commit -m "Archive du rapport PDF du ${DATE} [skip ci]"
+            git push
+          fi
 
       - name: Déployer sur la branche gh-pages
         uses: peaceiris/actions-gh-pages@v4

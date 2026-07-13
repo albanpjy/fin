@@ -61,13 +61,32 @@ sur push (`main` et `fin`), chaque jour ouvré à 18 h UTC (cron), et manuelleme
 
 ## Architecture
 
-Tout le dashboard tient dans `index.qmd` (format `dashboard` de Quarto,
-orientation `rows`) ; `portfolio.csv` est l'unique source de données, une ligne
-par position. La sortie va dans `docs/` (configuré dans `_quarto.yml`, ignoré
-par git — destiné à GitHub Pages en v3).
+Deux documents Quarto partagent un même pipeline de calculs :
 
-Le chunk `setup` de `index.qmd` construit un pipeline dont les objets sont
-réutilisés par tous les chunks d'affichage :
+- **`R/pipeline.R`** — LA source unique des données et calculs (sections
+  commentées 1 à 11), chargée par `source(..., encoding = "UTF-8")` depuis les
+  deux qmd. Toute évolution de calcul se fait ici, jamais en double ;
+- **`index.qmd`** — le dashboard HTML (format `dashboard`, orientation `rows`,
+  plotly/DT) ; son setup ne contient que les échelles plotly (`scale_seq`,
+  `scale_div`, `ligne_v`) ;
+- **`rapport.qmd`** — le rapport PDF quotidien : LaTeX KOMA (`scrartcl`,
+  `DIV=11`, microtype), `lang: fr` (typographie française), graphiques
+  **ggplot2** statiques (dev `cairo_pdf` pour l'UTF-8), tableaux
+  `knitr::kable(booktabs = TRUE)`. Pas d'emoji dans le texte du PDF (LaTeX).
+  Le bouton « Rapport PDF » de la barre du dashboard pointe vers `rapport.pdf` ;
+- `_quarto.yml` impose l'ordre de rendu `index.qmd` puis `rapport.qmd` :
+  le premier télécharge et met en cache les cours, le second réutilise le
+  cache (mêmes données garanties dans les deux documents).
+
+`portfolio.csv` est l'unique source de données, une ligne par position. La
+sortie va dans `docs/` (ignoré par git). Le workflow archive en plus chaque
+jour ouvré une copie horodatée du PDF dans `exports/`
+(`portfolio-tracker_AAAA-MM-JJ.pdf`), commitée sur `main` avec `[skip ci]`
+dans le message pour éviter une boucle de déclenchements ; le rendu CI installe
+TinyTeX via `quarto-actions/setup` (`tinytex: true`).
+
+Le pipeline (`R/pipeline.R`) construit les objets réutilisés par tous les
+chunks d'affichage :
 
 1. `portfolio` — lecture du CSV (types explicites via `col_types`, ne pas retirer :
    la colonne `pmu` souvent vide serait sinon parsée en logique) ; un `warning`

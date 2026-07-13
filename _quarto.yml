@@ -1,6 +1,11 @@
 project:
   title: "Portfolio Tracker"
   output-dir: docs
+  render:
+    # index.qmd d'abord : c'est lui qui télécharge et met en cache les cours ;
+    # rapport.qmd réutilise ensuite le cache (mêmes données garanties).
+    - index.qmd
+    - rapport.qmd
 
 lang: fr
 
