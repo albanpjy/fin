@@ -19,6 +19,7 @@ format:
     include-in-header:
       text: |
         \usepackage{microtype}
+        \usepackage{booktabs}
         \setkomafont{disposition}{\rmfamily\bfseries}
         \addtokomafont{caption}{\small}
         \setcapindent{0pt}
@@ -86,8 +87,10 @@ Depuis le 1^er^ janvier, la performance s'établit à **`r pct(perf_ytd)`**.
 
 # Les indicateurs calculés par le pipeline, mis en forme à la française.
 # knitr::kable + booktabs : le standard des tableaux LaTeX soignés.
-# La légende est passée à kable() (et non à Quarto via tbl-cap) pour obtenir
-# un tableau flottant insécable plutôt qu'un longtable coupé entre deux pages.
+# format = "latex" + caption dans kable() : le tableau sort en flottant
+# LaTeX insécable aux colonnes ajustées au contenu, au lieu du longtable
+# (coupable entre deux pages, colonnes étroites) produit par la conversion
+# markdown -> pandoc.
 tibble(
   Indicateur = c(
     "Valeur du portefeuille", "Capital investi", "Plus/moins-value latente",
@@ -105,7 +108,7 @@ tibble(
     pct(cvar95_pct), pct(dd_max), num(beta_pf)
   )
 ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "lr",
+  knitr::kable(format = "latex", booktabs = TRUE, linesep = "", align = "lr",
                caption = "Indicateurs clés du portefeuille")
 ```
 
@@ -126,7 +129,7 @@ positions |>
     `+/-` = eur(pnl), `+/- (%)` = pct(pnl_pct),
     Poids = pct(poids)
   ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "llrrrrrrr",
+  knitr::kable(format = "latex", booktabs = TRUE, linesep = "", align = "llrrrrrrr",
                caption = "Détail des positions, triées par valeur décroissante")
 ```
 
@@ -253,8 +256,8 @@ medaf |>
     `Attendu (MEDAF)` = pct(ret_medaf),
     Alpha = pct(alpha)
   ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "lrrrr",
-               caption = "MEDAF appliqué ligne par ligne (marché : CAC 40, taux sans risque : 3 %)")
+  knitr::kable(format = "latex", booktabs = TRUE, linesep = "", align = "lrrrr",
+               caption = "MEDAF appliqué ligne par ligne (marché : CAC 40, taux sans risque : 3 \\%)")
 ```
 
 ```{r}
