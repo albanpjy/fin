@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - claude/funny-lamport-i4z7se
+      - fin
   schedule:
     # 18h00 UTC du lundi au vendredi, après la clôture d'Euronext (17h30 Paris)
     - cron: "0 18 * * 1-5"

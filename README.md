@@ -1,10 +1,13 @@
 # 📊 Portfolio Tracker
 
-[![Publier le dashboard](https://github.com/albanpjy/claude/actions/workflows/publish.yml/badge.svg)](https://github.com/albanpjy/claude/actions/workflows/publish.yml)
+**Auteur : Alban VIDELOUP**
 
-**🌐 Dashboard en ligne : <https://albanpjy.github.io/claude/>** — re-généré
+[![Publier le dashboard](https://github.com/albanpjy/fin/actions/workflows/publish.yml/badge.svg)](https://github.com/albanpjy/fin/actions/workflows/publish.yml)
+
+**🌐 Dashboard en ligne : <https://albanpjy.github.io/fin/>** — re-généré
 automatiquement du lundi au vendredi à 18 h UTC (après la clôture d'Euronext)
-par une GitHub Action, et à chaque push.
+par une GitHub Action, et à chaque push. La date et l'heure de récupération
+des données Yahoo Finance sont affichées en tête de l'onglet Vue d'ensemble.
 
 Dashboard [Quarto](https://quarto.org/) en R pour suivre un portefeuille d'actions et d'ETF :
 valorisation au dernier cours, plus/moins-values latentes, allocation sectorielle et
@@ -66,7 +69,11 @@ Tout se passe dans **`portfolio.csv`** — une ligne par position :
 | `date_achat` | Date d'achat au format `AAAA-MM-JJ`                                          |
 | `pmu`        | Prix moyen unitaire d'achat en €. **Optionnel** : si vide, le cours de clôture du premier jour coté après `date_achat` est utilisé |
 
-Remplacez les lignes d'exemple par vos vraies positions, puis relancez `quarto render`.
+Remplacez les lignes d'exemple par vos vraies positions, puis relancez
+`quarto render` (ou poussez le commit : la GitHub Action republiera le site).
+**Gardez 10 lignes au maximum** : les onglets d'analyse (corrélations,
+frontière efficiente, MEDAF) sont dimensionnés pour rester lisibles avec une
+dizaine de lignes — un avertissement s'affiche au rendu si vous dépassez.
 
 > ⚠️ Ce dépôt est public : n'y mettez vos positions réelles qu'en connaissance de cause.
 

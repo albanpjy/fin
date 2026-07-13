@@ -8,9 +8,19 @@ Portfolio Tracker : dashboard Quarto en R qui valorise et analyse un portefeuill
 d'actions et d'ETF (**10 lignes maximum** — contrainte voulue par l'utilisateur :
 7 actions CAC 40 + 3 ETF UCITS) à partir des cours Yahoo Finance. Cinq pages :
 Vue d'ensemble, Théorie (MEDAF, ratios, frontière efficiente — pédagogique),
-Performance, Risque, Couverture (options). Projet et conversation utilisateur
-**en français** : interface du dashboard, README, messages de commit et échanges
-se font en français.
+Performance, Risque, Couverture (options). **Auteur : Alban VIDELOUP** (champ
+`author` du qmd, README, avertissement de l'onglet Couverture). Projet et
+conversation utilisateur **en français** : interface du dashboard, README,
+messages de commit et échanges se font en français. Style de code voulu par
+l'auteur : **commentaires pédagogiques abondants** dans index.qmd (chaque
+section du setup et chaque chunk d'affichage expliqués) — les préserver lors
+des modifications.
+
+Le dépôt est en cours de renommage `claude` → `fin` (branche de travail `fin`,
+liens et badge déjà mis à jour) ; le renommage du dépôt lui-même se fait par
+l'utilisateur dans Settings → General. URL de publication cible :
+<https://albanpjy.github.io/fin/>. GitHub redirige automatiquement les anciens
+liens/remotes après renommage.
 
 ## Commandes
 
@@ -36,13 +46,15 @@ extrayant de `index.qmd` et en les passant à `parse(text = ...)` avec `Rscript`
 ## Publication automatique (v3)
 
 `.github/workflows/publish.yml` rend le dashboard et le déploie sur GitHub
-Pages (<https://albanpjy.github.io/claude/>) : sur push (`main` et la branche de
-session), chaque jour ouvré à 18 h UTC (cron), et manuellement
+Pages via la branche `gh-pages` (Pages configuré en « Deploy from a branch ») :
+sur push (`main` et `fin`), chaque jour ouvré à 18 h UTC (cron), et manuellement
 (`workflow_dispatch`). Points d'attention :
 
 - le cron s'exécute sur le **workflow de la branche par défaut** du dépôt ;
-- Pages est activé par le workflow lui-même (`actions/configure-pages` avec
-  `enablement: true`) — pas de réglage manuel requis ;
+- l'activation initiale de Pages a été faite à la main par l'utilisateur
+  (Settings → Pages → Deploy from a branch → `gh-pages`) : le jeton du workflow
+  n'a pas les droits d'administration nécessaires (`enablement: true` échoue en
+  « Resource not accessible by integration ») ;
 - les packages R viennent en binaire de Posit RSPM (`use-public-rspm`) et sont
   mis en cache (`actions/cache` sur `R_LIBS_USER`) ; `rmarkdown` est requis en
   plus des packages du dashboard pour que Quarto exécute les chunks R.
@@ -58,9 +70,13 @@ Le chunk `setup` de `index.qmd` construit un pipeline dont les objets sont
 réutilisés par tous les chunks d'affichage :
 
 1. `portfolio` — lecture du CSV (types explicites via `col_types`, ne pas retirer :
-   la colonne `pmu` souvent vide serait sinon parsée en logique) ;
+   la colonne `pmu` souvent vide serait sinon parsée en logique) ; un `warning`
+   pédagogique se déclenche au-delà de 10 lignes ;
 2. `prices` — historique `tq_get()` de tous les tickers depuis le plus ancien
-   achat ; les `close` NA sont filtrés immédiatement ;
+   achat ; les `close` NA sont filtrés immédiatement ; l'horodatage du
+   téléchargement est conservé (`horodatage_donnees`, stocké dans le cache via
+   `telecharge_le`) et affiché en tête de la Vue d'ensemble (`info_donnees`,
+   heure de Paris + date de dernière clôture) ;
 3. prix de revient : si `pmu` est vide dans le CSV, il est calculé comme le
    cours de clôture du premier jour coté suivant `date_achat` (fonction
    `premier_cours_apres`) — c'est un contrat documenté dans le README ;
