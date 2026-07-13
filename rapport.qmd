@@ -3,6 +3,7 @@ title: "Portfolio Tracker"
 subtitle: "Rapport quotidien de suivi de portefeuille"
 author: "Alban VIDELOUP"
 date: today
+date-format: "D MMMM YYYY"
 lang: fr
 format:
   pdf:
@@ -82,10 +83,11 @@ Depuis le 1^er^ janvier, la performance s'établit à **`r pct(perf_ytd)`**.
 
 ```{r}
 #| label: tbl-synthese
-#| tbl-cap: "Indicateurs clés du portefeuille"
 
 # Les indicateurs calculés par le pipeline, mis en forme à la française.
 # knitr::kable + booktabs : le standard des tableaux LaTeX soignés.
+# La légende est passée à kable() (et non à Quarto via tbl-cap) pour obtenir
+# un tableau flottant insécable plutôt qu'un longtable coupé entre deux pages.
 tibble(
   Indicateur = c(
     "Valeur du portefeuille", "Capital investi", "Plus/moins-value latente",
@@ -103,26 +105,29 @@ tibble(
     pct(cvar95_pct), pct(dd_max), num(beta_pf)
   )
 ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "lr")
+  knitr::kable(booktabs = TRUE, linesep = "", align = "lr",
+               caption = "Indicateurs clés du portefeuille")
 ```
 
 # Positions
 
 ```{r}
 #| label: tbl-positions
-#| tbl-cap: "Détail des positions, triées par valeur décroissante"
 
 # Chaque colonne est formatée en amont (chaînes de caractères) pour un
 # contrôle total de la typographie : espaces des milliers, virgules…
+# La plus/moins-value est scindée en deux colonnes (euros / pourcentage)
+# pour éviter tout retour à la ligne dans les cellules.
 positions |>
   arrange(desc(valeur)) |>
   transmute(
     Ligne = nom, Ticker = ticker, `Qté` = quantite,
     PMU = eur(pmu), Cours = eur(cours), Valeur = eur(valeur),
-    `+/- value` = paste0(eur(pnl), " (", pct(pnl_pct), ")"),
+    `+/-` = eur(pnl), `+/- (%)` = pct(pnl_pct),
     Poids = pct(poids)
   ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "llrrrrrr")
+  knitr::kable(booktabs = TRUE, linesep = "", align = "llrrrrrrr",
+               caption = "Détail des positions, triées par valeur décroissante")
 ```
 
 ```{r}
@@ -237,7 +242,6 @@ ggplot(corr_long, aes(n1, n2, fill = rho)) +
 
 ```{r}
 #| label: tbl-medaf
-#| tbl-cap: "MEDAF appliqué ligne par ligne (marché : CAC 40, taux sans risque : 3 %)"
 
 # Bêta > 1 : la ligne amplifie le CAC 40 ; alpha > 0 : elle a fait mieux
 # que ce que son niveau de risque laissait espérer (cf. dashboard, onglet
@@ -245,11 +249,12 @@ ggplot(corr_long, aes(n1, n2, fill = rho)) +
 medaf |>
   transmute(
     Ligne = nom, `Bêta` = num(beta),
-    `Rendement réalisé (ann.)` = pct(ret_realise),
-    `Rendement MEDAF` = pct(ret_medaf),
+    `Réalisé (ann.)` = pct(ret_realise),
+    `Attendu (MEDAF)` = pct(ret_medaf),
     Alpha = pct(alpha)
   ) |>
-  knitr::kable(booktabs = TRUE, linesep = "", align = "lrrrr")
+  knitr::kable(booktabs = TRUE, linesep = "", align = "lrrrr",
+               caption = "MEDAF appliqué ligne par ligne (marché : CAC 40, taux sans risque : 3 %)")
 ```
 
 ```{r}
