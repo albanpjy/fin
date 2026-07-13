@@ -83,7 +83,9 @@ sortie va dans `docs/` (ignoré par git). Le workflow archive en plus chaque
 jour ouvré une copie horodatée du PDF dans `exports/`
 (`portfolio-tracker_AAAA-MM-JJ.pdf`), commitée sur `main` avec `[skip ci]`
 dans le message pour éviter une boucle de déclenchements ; le rendu CI installe
-TinyTeX via `quarto-actions/setup` (`tinytex: true`).
+TinyTeX via `quarto-actions/setup` (`tinytex: true`). ⚠️ Ne jamais écrire la
+chaîne « [skip ci] » dans un message de commit ordinaire (même pour la citer) :
+GitHub scanne le message entier et saute alors le workflow.
 
 Le pipeline (`R/pipeline.R`) construit les objets réutilisés par tous les
 chunks d'affichage :
