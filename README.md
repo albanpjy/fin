@@ -20,10 +20,12 @@ valorisation au dernier cours, plus/moins-values latentes, allocation sectoriell
 évolution de la valeur dans le temps. Les cours sont récupérés gratuitement sur
 Yahoo Finance via [`tidyquant`](https://business-science.github.io/tidyquant/) (aucune clé API nécessaire).
 
-Le portefeuille d'exemple contient **10 lignes** : 7 actions du CAC 40
-(Air Liquide, Airbus, BNP Paribas, LVMH, Sanofi, Schneider Electric,
-TotalEnergies) et 3 ETF UCITS (Amundi MSCI World CW8, BNP Paribas Easy S&P 500
-ESE, Amundi PEA MSCI Emergents PAEEM).
+Le portefeuille d'exemple contient **10 lignes** : 4 actions du CAC 40
+(Air Liquide, Carrefour, LVMH, TotalEnergies), 5 ETF UCITS (Amundi MSCI World
+CW8 et EWLDA, Amundi PEA Monde DCAM, Amundi PEA S&P 500 Screened PSPS, Amundi
+PEA MSCI Emergents PAEEM) et 1 OPCVM (Atout Vert Horizon — les fonds non cotés
+sont référencés sur Yahoo Finance par leur ISIN suffixé `.PA`, ex.
+`FR0010036962.PA`).
 
 ## 📑 Les onglets
 

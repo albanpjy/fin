@@ -73,6 +73,10 @@ lab_pct1 <- scales::label_percent(accuracy = 0.1, decimal.mark = ",", suffix = "
 ```
 
 > *`r info_donnees`.*
+>
+> *La version interactive de ce rapport (graphiques dynamiques, théorie
+> illustrée) est consultable en ligne :
+> [albanpjy.github.io/fin](https://albanpjy.github.io/fin/).*
 
 # Synthèse
 
@@ -289,6 +293,35 @@ ggplot(sim, aes(vol, ret)) +
 
 # Couverture par options
 
+## Les options sans jargon
+
+Une **option** donne le *droit* — jamais l'obligation — d'acheter (**call**) ou
+de vendre (**put**) un actif à un prix convenu (le **strike**), jusqu'à une date
+donnée (l'**échéance**), contre un versement immédiat (la **prime**).
+
+**L'analogie de l'assurance auto** — vous payez 500 € par an pour assurer une
+voiture de 20 000 € : si rien n'arrive, la cotisation est « perdue » (tant
+mieux) ; en cas de sinistre, l'assureur paie. Un put fonctionne à l'identique :
+la prime est la cotisation, le strike est la valeur garantie, l'échéance est la
+durée du contrat. Acheter un put à 95 % à 3 mois revient à assurer le
+portefeuille contre toute baisse au-delà de −5 % pendant 3 mois.
+
+**L'analogie de la promesse de vente** — un call ressemble à une option d'achat
+immobilière : 5 000 € versés pour bloquer le droit d'acheter un bien 300 000 €
+pendant 6 mois. Si le marché monte à 350 000 €, on exerce ; sinon on abandonne
+les 5 000 €. Dans tous les cas, la perte maximale de l'acheteur d'option est
+la prime — rien de plus.
+
+**Ce qui fait le prix d'une option** : ① la *distance du strike* (garantir −5 %
+coûte plus cher que garantir −15 %, comme une franchise basse) ; ② la *durée*
+(le prix croît environ comme la racine carrée du temps) ; ③ la *volatilité* (le
+conducteur nerveux paie plus cher — quand le marché s'affole, les primes de put
+doublent ou triplent, si bien que la bonne assurance s'achète par temps calme).
+Enfin, la **valeur temps** de l'option « fond » chaque jour, de plus en plus
+vite près de l'échéance : c'est la rémunération du vendeur.
+
+## Les trois stratégies appliquées au portefeuille
+
 Le put protecteur crée un **plancher** sous le portefeuille moyennant une
 prime ; le **collar** finance ce put par la vente d'un call, au prix d'un
 **plafond** sur la hausse ; le **covered call** encaisse une prime en
@@ -352,10 +385,140 @@ $$N_{puts} = \frac{V_{portefeuille} \times \beta}{\text{Indice} \times \text{quo
 
 `r if (n_puts_exact < 1) paste0("Moins d'un contrat : pour un portefeuille de cette taille, la couverture indicielle est surdimensionnée (un put PXA couvre environ ", eur(cac_niveau * 10), " d'exposition). Alternatives : options sur actions individuelles (quotité de 100 titres), produits de bourse baissiers en petites coupures, ou augmentation temporaire de la poche de liquidités.") else paste0("Soit ", ceiling(n_puts_exact), " contrat(s) après arrondi. Coût indicatif de l'assurance (put 3 mois, strike 95 %) : environ ", eur(prime_put * total_valeur), ", soit ", pct(prime_put), " du portefeuille.")`
 
+# Annexe — Fondements théoriques {#sec-theorie}
+
+Cette annexe développe les modèles qui sous-tendent les indicateurs du rapport,
+avec leurs hypothèses et leurs limites — plus en détail que l'onglet Théorie du
+[dashboard](https://albanpjy.github.io/fin/).
+
+## Le MEDAF (CAPM) : pourquoi seul le risque de marché est rémunéré
+
+Le Modèle d'Évaluation Des Actifs Financiers (Sharpe, 1964 ; Lintner, 1965)
+part d'un constat : le rendement d'un titre se décompose en une partie
+expliquée par le marché et une partie qui lui est propre,
+$$r_i = \alpha_i + \beta_i \, r_m + \varepsilon_i,$$
+régression dont la pente est le **bêta** :
+$$\beta_i = \frac{\mathrm{Cov}(r_i, r_m)}{\mathrm{Var}(r_m)}.$$
+
+Le risque *spécifique* $\varepsilon_i$ (une grève, un échec commercial, un
+scandale) disparaît dans un portefeuille diversifié : la loi des grands nombres
+fait tendre la moyenne des $\varepsilon_i$ vers zéro. Un investisseur
+diversifié ne subit donc que le risque *systématique* $\beta_i \, r_m$ — et un
+marché à l'équilibre ne rémunère que le risque qu'on ne peut pas éliminer
+gratuitement. D'où la relation centrale du MEDAF :
+$$E(R_i) = R_f + \beta_i \left[ E(R_m) - R_f \right].$$
+
+L'**alpha de Jensen** mesure l'écart entre le rendement réalisé et cette
+espérance : $\alpha_i = \bar{R}_i - R_f - \beta_i(\bar{R}_m - R_f)$. Un alpha
+durablement positif signale soit un talent de gestion, soit — plus souvent —
+un facteur de risque que le modèle ne capture pas.
+
+**Hypothèses du modèle** (toutes discutables) : investisseurs rationnels et
+averses au risque, raisonnant en moyenne-variance sur une seule période ;
+marchés sans frictions (ni impôts, ni coûts de transaction) ; prêt et emprunt
+illimités au taux sans risque ; anticipations homogènes. **Limites
+empiriques** : le bêta estimé est instable dans le temps (fenêtre et fréquence
+d'estimation changent le résultat — ici, rendements quotidiens depuis la
+constitution du portefeuille) ; la relation rendement/bêta observée est plus
+plate que prévue (« low-beta anomaly ») ; des facteurs supplémentaires — taille,
+valorisation, momentum — expliquent les rendements au-delà du marché, d'où les
+modèles multi-facteurs de Fama-French (1993, 2015) qui étendent le MEDAF sans
+le renier : le bêta de marché en reste le premier pilier.
+
+## Mesurer le risque : volatilité, Sharpe, Sortino, VaR, drawdown
+
+**Volatilité.** L'écart-type des rendements quotidiens, annualisé par
+$\sigma_{an} = \sigma_j \sqrt{252}$ — la racine vient de l'additivité des
+variances de rendements indépendants. Limite : elle traite symétriquement
+hausses et baisses et sous-estime les queues épaisses des rendements réels
+(les krachs sont plus fréquents que ne le prédit la loi normale).
+
+**Ratio de Sharpe** $= (R_p - R_f)/\sigma_p$ : l'excès de rendement par unité
+de risque total. C'est *l'échelle de comparaison universelle* entre placements
+— mais il pénalise la volatilité haussière et perd son sens sur des
+distributions très asymétriques (stratégies optionnelles).
+
+**Ratio de Sortino** $= (R_p - R_f)/\sigma^-_p$ avec
+$\sigma^- = \sqrt{\frac{1}{n}\sum \min(r_t - r_{cible}, 0)^2}\,\sqrt{252}$ :
+même logique, mais seuls les écarts *sous* l'objectif comptent comme du
+risque. Un Sortino très supérieur au Sharpe signale des pertes rares mais
+concentrées.
+
+**Value at Risk.** La VaR historique à 95 % sur 1 jour est le 5^e^ centile
+empirique des rendements observés ; la version paramétrique suppose la
+normalité : $\text{VaR}_{95\%} = -(\mu_j - 1{,}645\,\sigma_j)$. Trois
+critiques classiques : elle ne dit *rien* de l'ampleur des pertes au-delà du
+seuil ; elle n'est pas sous-additive (la VaR d'un portefeuille peut dépasser
+la somme des VaR de ses composants) ; elle extrapole le passé. La **CVaR**
+(Expected Shortfall), moyenne des pertes au-delà de la VaR, corrige les deux
+premiers défauts — c'est elle que privilégient les régulateurs (Bâle III).
+
+**Drawdown maximal.** $DD_t = V_t / \max_{s \le t} V_s - 1$, dont le minimum
+est le drawdown maximal. Mesure « psychologique » par excellence : une perte
+de 40 % exige un gain de 67 % pour être effacée, et la durée de recouvrement
+compte autant que la profondeur.
+
+## Markowitz : diversification et frontière efficiente
+
+La variance d'un portefeuille de pondérations $w$ s'écrit
+$\sigma_p^2 = w^\top \Sigma \, w = \sum_i \sum_j w_i w_j \sigma_{ij}$ : elle
+dépend des **covariances** bien plus que des variances individuelles (dans un
+portefeuille de $n$ titres équipondérés, il y a $n$ variances mais $n(n-1)$
+covariances). Tant que les corrélations sont inférieures à 1, le risque du
+portefeuille est inférieur à la moyenne pondérée des risques : c'est le seul
+« repas gratuit » de la finance.
+
+En balayant toutes les pondérations possibles, l'ensemble des couples
+$(\sigma_p, E(R_p))$ atteignables dessine une région dont la bordure
+supérieure gauche est la **frontière efficiente**. Deux portefeuilles y sont
+remarquables : celui de **variance minimale globale**
+($w \propto \Sigma^{-1}\mathbf{1}$) et le portefeuille **tangent**, qui
+maximise le ratio de Sharpe ($w \propto \Sigma^{-1}(\mu - R_f\mathbf{1})$).
+Combiné à l'actif sans risque, ce dernier engendre la **droite de marché des
+capitaux** $E(R_p) = R_f + \frac{E(R_m)-R_f}{\sigma_m}\sigma_p$ : tout
+investisseur rationnel du modèle détient le même portefeuille risqué, dosé
+selon son aversion au risque — c'est le théorème de séparation de Tobin, et
+le chaînon qui mène au MEDAF.
+
+**Limite majeure** : $\mu$ et $\Sigma$ sont *estimés* sur un historique court
+et bruité. L'optimiseur « maximise les erreurs d'estimation » (Michaud) : une
+petite variation des données déplace beaucoup la frontière. La simulation
+Monte Carlo du rapport (4 000 portefeuilles) visualise le nuage atteignable
+sans prétendre à l'optimum exact ; en pratique, contraintes de poids,
+rééquilibrages périodiques et humilité sur les espérances de rendement font
+mieux que l'optimisation naïve.
+
+## Les options : payoffs, parité et prix
+
+À l'échéance $T$, les profils de gain sont
+$$\text{Call} = \max(S_T - K, 0), \qquad \text{Put} = \max(K - S_T, 0).$$
+Acheteur : perte limitée à la prime, gain potentiellement illimité (call) ou
+égal au strike (put). Vendeur : gain limité à la prime, risque important —
+d'où les appels de marge.
+
+La **parité call-put**, $C - P = S_0 - K e^{-rT}$, relie les primes d'un call
+et d'un put de mêmes strike et échéance : elle découle d'un simple argument
+d'absence d'arbitrage (deux portefeuilles au payoff identique valent le même
+prix aujourd'hui) et permet de vérifier la cohérence des prix cotés.
+
+Le modèle de **Black-Scholes-Merton** (1973) donne le prix théorique d'un call
+européen sur un actif sans dividende :
+$$C = S_0 \, N(d_1) - K e^{-rT} N(d_2), \qquad
+d_{1,2} = \frac{\ln(S_0/K) + (r \pm \sigma^2/2)\,T}{\sigma \sqrt{T}},$$
+où $N$ est la fonction de répartition normale. Intuition : $N(d_2)$
+s'interprète comme la probabilité (risque-neutre) de finir dans la monnaie.
+Le seul paramètre inobservable est $\sigma$ ; en pratique, on *inverse* la
+formule à partir des prix cotés pour obtenir la **volatilité implicite** — la
+« météo » que le marché intègre dans les primes, celle-là même qui fait
+tripler le prix des puts en période de stress. Les sensibilités du prix (les
+**grecques** : delta $\partial C/\partial S$, thêta — l'érosion du temps —,
+véga — la sensibilité à la volatilité) guident la gestion d'une couverture :
+un put protecteur a un delta négatif qui amortit les baisses, et un thêta
+négatif qui matérialise le coût de l'assurance jour après jour.
+
 ---
 
 *Rapport généré automatiquement à partir des cours Yahoo Finance — document
 pédagogique rédigé par Alban VIDELOUP, ne constitue pas un conseil en
-investissement. Le dashboard interactif complet (théorie du MEDAF, ratios,
-frontière efficiente) est consultable sur*
+investissement. Le dashboard interactif complet est consultable sur*
 <https://albanpjy.github.io/fin/>.

@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Le projet
 
 Portfolio Tracker : dashboard Quarto en R qui valorise et analyse un portefeuille
-d'actions et d'ETF (**10 lignes maximum** — contrainte voulue par l'utilisateur :
-7 actions CAC 40 + 3 ETF UCITS) à partir des cours Yahoo Finance. Cinq pages :
+d'actions, d'ETF et d'OPCVM (**10 lignes maximum** — contrainte voulue par
+l'utilisateur : 4 actions CAC 40, 5 ETF UCITS, 1 OPCVM) à partir des cours
+Yahoo Finance. Cinq pages :
 Vue d'ensemble, Théorie (MEDAF, ratios, frontière efficiente — pédagogique),
 Performance, Risque, Couverture (options). **Auteur : Alban VIDELOUP** (champ
 `author` du qmd, README, avertissement de l'onglet Couverture). Projet et
@@ -147,10 +148,13 @@ de marches aléatoires — voir l'historique de session si besoin de le recréer
 
 ## Données
 
-- Tickers au format **Yahoo Finance** (suffixe `.PA` Paris, `.AS` Amsterdam —
-  ArcelorMittal est `MT.AS`). En cas de ligne écartée au rendu, suspecter
-  d'abord un ticker d'ETF renommé (fusions de gammes Amundi/Lyxor).
-- Les 7 actions de `portfolio.csv` appartiennent au CAC 40 (composition du
+- Tickers au format **Yahoo Finance** (suffixe `.PA` Paris, `.AS` Amsterdam).
+  Les **OPCVM non cotés** y sont référencés par leur **ISIN suffixé `.PA`**
+  (ex. Atout Vert Horizon = `FR0010036962.PA`). En cas de ligne écartée au
+  rendu, suspecter d'abord un ticker d'ETF renommé (fusions de gammes
+  Amundi/Lyxor) — le ticker `EWLDA.PA` n'a pas pu être contre-vérifié (repli :
+  `EWLD.PA`, part Dist).
+- Les actions de `portfolio.csv` appartiennent au CAC 40 (composition du
   22/12/2025) ; l'indice évolue à chaque revue trimestrielle d'Euronext (mars,
   juin, septembre, décembre). Garder **10 lignes maximum** dans le CSV — les
   onglets d'analyse (corrélations, frontière, MEDAF) sont dimensionnés pour ça.

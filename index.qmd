@@ -154,15 +154,16 @@ plot_ly(
 ### Column {width="30%"}
 
 ```{r}
-#| title: "Actions vs ETF"
-# Donut de la répartition Actions / ETF (colonne `type` du CSV).
+#| title: "Répartition par type d'actif"
+# Donut de la répartition Action / ETF / OPCVM (colonne `type` du CSV).
+# Les couleurs suivent l'ordre alphabétique des types (ordre de group_by).
 positions |>
   group_by(type) |>
   summarise(valeur = sum(valeur), .groups = "drop") |>
   plot_ly(
     labels = ~type, values = ~valeur,
     type = "pie", hole = 0.55,
-    marker = list(colors = c(col_s1, col_s2)),
+    marker = list(colors = c(col_s1, col_s2, col_s3)),
     textinfo = "label+percent",
     hovertemplate = "%{label}<br>%{value:,.0f} €<extra></extra>"
   ) |>
@@ -631,6 +632,63 @@ Les trois stratégies de base sont comparées ci-dessous, appliquées à la vale
 actuelle de votre portefeuille. Les primes utilisées (2,5 % pour un put à 95 %,
 1,5 % pour un call à 105 %, échéance ~3 mois) sont **des ordres de grandeur
 indicatifs** — les vraies primes dépendent de la volatilité implicite du moment.
+
+:::
+
+## Row
+
+::: {.card title="Comprendre les options par l'exemple — la théorie sans jargon"}
+
+**🚗 L'analogie de l'assurance auto.** Vous payez 500 € par an pour assurer une
+voiture de 20 000 €. Si rien n'arrive, les 500 € sont « perdus » — et tant
+mieux. Si la voiture est détruite, l'assureur paie. Un **put** fonctionne
+exactement pareil : la **prime** est la cotisation, le **strike** est la valeur
+garantie (l'équivalent de la franchise inversée), l'**échéance** est la durée du
+contrat. Acheter un put à 95 % sur 3 mois, c'est assurer son portefeuille contre
+toute baisse au-delà de −5 % pendant 3 mois.
+
+**🏠 L'analogie de la promesse de vente.** Un **call**, c'est comme une option
+d'achat sur un appartement : vous versez 5 000 € pour « bloquer » le droit
+d'acheter à 300 000 € pendant 6 mois. Si le marché immobilier flambe à
+350 000 €, vous exercez et gagnez la différence. S'il stagne, vous abandonnez
+vos 5 000 €. Vous ne pouvez jamais perdre *plus* que la somme versée — c'est la
+grande différence avec un achat à crédit.
+
+**De quoi dépend le prix d'une option ?** Trois facteurs dominent, et ils sont
+intuitifs si l'on garde l'image de l'assurance :
+
+1. **La distance du strike** — assurer une baisse au-delà de −5 % coûte plus
+   cher qu'au-delà de −15 %, comme une franchise basse coûte plus cher qu'une
+   franchise haute ;
+2. **La durée** — 6 mois de protection coûtent plus cher que 1 mois (mais pas
+   deux fois plus : le prix croît environ comme la racine carrée du temps) ;
+3. **La volatilité** — assurer un conducteur nerveux coûte plus cher. Quand le
+   marché s'affole, les primes de put **doublent ou triplent** : le bon moment
+   pour acheter une assurance, c'est quand tout est calme… exactement comme en
+   assurance habitation, pas pendant l'inondation.
+
+**La valeur temps, ou pourquoi l'option « fond ».** Une option vaut deux
+choses : sa valeur *intrinsèque* (ce qu'elle rapporterait si on l'exerçait tout
+de suite) et sa valeur *temps* (la chance que le marché bouge d'ici l'échéance).
+Cette valeur temps fond chaque jour, de plus en plus vite à l'approche de
+l'échéance — comme un forfait de ski en fin de saison. C'est ce qui rémunère le
+**vendeur** de l'option (souvent un institutionnel, ou vous-même dans un covered
+call : vous encaissez la prime et c'est vous qui « louez » votre potentiel de
+hausse).
+
+**Le vocabulaire en une ligne chacun** : *dans la monnaie* = l'option aurait de
+la valeur si elle expirait maintenant ; *hors de la monnaie* = pas encore ;
+*à la monnaie* = strike ≈ cours actuel ; *exercer* = utiliser son droit ;
+*rouler* = remplacer une option qui expire par une plus lointaine ;
+*volatilité implicite* = la « météo » que le marché intègre dans les primes.
+
+**En pratique sur Euronext** : les options sur indice CAC 40 (PXA) ont une
+quotité de 10 € par point d'indice ; les options sur actions portent sur
+100 titres. Elles se négocient sur un compte-titres ordinaire (pas dans un
+PEA), après activation par votre courtier d'une autorisation spécifique.
+
+*→ La théorie complète (formules de payoff, parité call-put, modèle de
+Black-Scholes) est développée dans l'annexe du rapport PDF.*
 
 :::
 
