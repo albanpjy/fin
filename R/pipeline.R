@@ -113,6 +113,12 @@ cache_fichier <- "cache_cours.rds"
 cache_frais   <- file.exists(cache_fichier) &&
   as.Date(file.mtime(cache_fichier)) == Sys.Date()
 
+# Date de départ du téléchargement Yahoo : celle du plus ancien achat parmi
+# les lignes COTÉES uniquement. Une ligne à cours_manuel (OPCVM non coté,
+# parfois acheté il y a très longtemps) ne doit pas forcer le téléchargement
+# d'un historique inutilement long pour tous les autres tickers.
+date_plus_ancienne <- min(portfolio$date_achat[is.na(portfolio$cours_manuel)])
+
 if (cache_frais) {
   # --- Chemin rapide : un cache d'aujourd'hui existe, on le relit tel quel.
   cache  <- readRDS(cache_fichier)
@@ -132,7 +138,7 @@ if (cache_frais) {
   prices <- tryCatch(
     tq_get(
       unique(portfolio$ticker),
-      from = min(portfolio$date_achat) - days(7),
+      from = date_plus_ancienne - days(7),
       to   = Sys.Date()
     ) |>
       filter(!is.na(close)),   # les jours sans clôture (NA) sont éliminés
@@ -142,7 +148,7 @@ if (cache_frais) {
   )
   bench_brut <- tryCatch(
     tq_get(indice_marche,
-           from = min(portfolio$date_achat) - days(7),
+           from = date_plus_ancienne - days(7),
            to   = Sys.Date()),
     error = function(e) NULL
   )
@@ -179,7 +185,7 @@ if (cache_frais) {
 derniere_cloture <- max(prices$date)
 info_donnees <- paste0(
   "Données Yahoo Finance récupérées le ",
-  format(horodatage_donnees, "%d/%m/%Y à %H:%M", tz = "Europe/Paris"),
+  format(horodatage_donnees, "%d/%m/%Y à %Hh%M", tz = "Europe/Paris"),
   " (heure de Paris) · dernière clôture disponible : ",
   format(derniere_cloture, "%d/%m/%Y"),
   if (cache_frais) " · source : cache local du jour" else " · source : téléchargement direct"
