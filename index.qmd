@@ -51,10 +51,12 @@ ligne_v <- list(list(
 
 # 📊 Vue d'ensemble
 
-## Row {height="55px"}
+## Row {height="8%"}
 
 ::: {.card}
 `r info_donnees`
+
+`r if (nzchar(note_manuelles)) paste0("ℹ️ ", note_manuelles)`
 :::
 
 ## Row {height="20%"}
@@ -235,7 +237,7 @@ et des rendements gaussiens. Les modèles multi-facteurs (Fama-French) l'affinen
 mais le bêta reste l'outil de base pour dimensionner une couverture — on s'en
 sert dans l'onglet 🛡️ Couverture.
 
-*→ L'onglet ⚠️ Risque calcule le bêta et l'alpha réels de chacune de vos 10 lignes.*
+*→ L'onglet ⚠️ Risque calcule le bêta et l'alpha réels de chacune de vos lignes cotées.*
 
 :::
 
@@ -308,8 +310,8 @@ la matrice de covariance $\Sigma$ estimés sur l'historique — avec prudence : 
 estimations sont instables, et la frontière « optimale » d'hier ne l'est plus
 forcément demain.
 
-*→ L'onglet ⚠️ Risque simule 4 000 portefeuilles à partir de vos 10 lignes et
-positionne votre allocation actuelle par rapport à la frontière.*
+*→ L'onglet ⚠️ Risque simule 4 000 portefeuilles à partir de vos lignes cotées
+et positionne votre allocation actuelle par rapport à la frontière.*
 
 :::
 
@@ -554,7 +556,7 @@ medaf |>
 ## Row {height="480px"}
 
 ```{r}
-#| title: "Frontière efficiente : 4 000 portefeuilles simulés à partir de vos 10 lignes"
+#| title: "Frontière efficiente : 4 000 portefeuilles simulés à partir de vos lignes cotées"
 # Chaque point gris-bleu est un portefeuille simulé (couleur = ratio de
 # Sharpe). L'enveloppe supérieure du nuage est la frontière efficiente.
 # Repères : losanges = chaque ligne seule ; triangle vert = simulation au

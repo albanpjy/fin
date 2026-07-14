@@ -80,11 +80,14 @@ lab_pct1 <- scales::label_percent(accuracy = 0.1, decimal.mark = ",", suffix = "
 
 # Synthèse
 
-Le portefeuille (`r nrow(positions)` lignes : `r sum(positions$type == "Action")`
-actions et `r sum(positions$type == "ETF")` ETF) est valorisé
-**`r eur(total_valeur)`**, pour un capital investi de `r eur(total_investi)`,
-soit une plus-value latente de **`r eur(total_pnl)` (`r pct(total_pnl_pct)`)**.
-Depuis le 1^er^ janvier, la performance s'établit à **`r pct(perf_ytd)`**.
+Le portefeuille (`r nrow(positions)` lignes :
+`r positions |> count(type) |> mutate(l = paste0(n, " ", type)) |> pull(l) |> paste(collapse = ", ")`)
+est valorisé **`r eur(total_valeur)`**, pour un capital investi de
+`r eur(total_investi)`, soit une plus-value latente de
+**`r eur(total_pnl)` (`r pct(total_pnl_pct)`)**. Depuis le 1^er^ janvier, la
+performance s'établit à **`r pct(perf_ytd)`**.
+
+`r if (nzchar(note_manuelles)) paste0("*Note — ", note_manuelles, "*")`
 
 ```{r}
 #| label: table-synthese

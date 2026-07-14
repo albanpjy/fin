@@ -45,21 +45,6 @@ jobs:
             if (length(manquants) > 0) install.packages(manquants)
           '
 
-      - name: Diagnostic tickers (temporaire)
-        run: |
-          Rscript -e '
-            suppressMessages(library(tidyquant))
-            candidats <- c("EWLD.PA", "EWLDA.PA", "WLD.PA",
-                           "FR0010036962.PA", "F0GBR067L3.PA", "0P00000LU4.F")
-            for (tk in candidats) {
-              d <- tryCatch(tq_get(tk, from = Sys.Date() - 60), error = function(e) NULL)
-              ok <- is.data.frame(d) && nrow(d) > 0 && any(!is.na(d$close))
-              cat("DIAG", tk, ":",
-                  if (ok) paste(sum(!is.na(d$close)), "cours, dernier =",
-                                round(tail(na.omit(d$close), 1), 2)) else "AUCUNE DONNEE",
-                  "\n")
-            }'
-
       - name: Installer Quarto et TinyTeX (LaTeX pour le rapport PDF)
         uses: quarto-dev/quarto-actions/setup@v2
         with:

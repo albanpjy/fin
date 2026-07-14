@@ -61,6 +61,13 @@ num <- function(x, d = 2) format(round(x, d), decimal.mark = ",", trim = TRUE)
 #   date_achat : date d'achat au format AAAA-MM-JJ
 #   pmu        : prix moyen d'achat en € — OPTIONNEL : laissé vide, il est
 #                remplacé par le cours de clôture qui suit la date d'achat
+#   cours_manuel : OPTIONNEL — pour les fonds absents de Yahoo Finance
+#                (OPCVM bancaires non cotés) : la dernière valeur liquidative,
+#                saisie à la main et à tenir à jour. Une ligne « manuelle »
+#                exige aussi un pmu renseigné ; elle est valorisée dans le
+#                patrimoine (valueboxes, tableaux, allocations) mais EXCLUE
+#                des analyses à historique (évolution, corrélations, MEDAF,
+#                frontière), faute de série de cours.
 #
 # ⚠️ Garder 10 lignes MAXIMUM : les analyses (corrélations, frontière
 #    efficiente, MEDAF) sont dimensionnées pour rester lisibles.
@@ -77,7 +84,8 @@ portfolio <- read_csv(
     secteur    = col_character(),
     quantite   = col_double(),
     date_achat = col_date(),
-    pmu        = col_double()
+    pmu        = col_double(),
+    cours_manuel = col_double()
   )
 )
 
@@ -177,13 +185,25 @@ info_donnees <- paste0(
   if (cache_frais) " · source : cache local du jour" else " · source : téléchargement direct"
 )
 
-# Tickers présents dans le CSV mais inconnus de Yahoo (faute de frappe,
-# ETF renommé…) : on les signale et on les écarte pour que le reste
-# du projet fonctionne quand même.
-manquants <- setdiff(unique(portfolio$ticker), unique(prices$symbol))
-if (length(manquants) > 0) {
-  warning("Tickers sans données : ", paste(manquants, collapse = ", "))
-  portfolio <- portfolio |> filter(!ticker %in% manquants)
+# Tickers présents dans le CSV mais inconnus de Yahoo. On les répartit en
+# deux familles :
+#   - lignes MANUELLES : un cours_manuel a été saisi dans le CSV (typiquement
+#     un OPCVM bancaire non coté sur Yahoo, ex. Atout Vert Horizon). On les
+#     garde : elles seront valorisées à la main en section 4, mais restent
+#     hors des analyses à historique (évolution, corrélations, MEDAF,
+#     frontière), faute de série de cours ;
+#   - vrais MANQUANTS : ni Yahoo, ni cours_manuel (faute de frappe, ETF
+#     renommé…). On les signale et on les écarte pour que le reste du projet
+#     fonctionne quand même.
+manquants        <- setdiff(unique(portfolio$ticker), unique(prices$symbol))
+lignes_manuelles <- intersect(
+  manquants,
+  portfolio$ticker[!is.na(portfolio$cours_manuel)]
+)
+vrais_manquants  <- setdiff(manquants, lignes_manuelles)
+if (length(vrais_manquants) > 0) {
+  warning("Tickers sans données : ", paste(vrais_manquants, collapse = ", "))
+  portfolio <- portfolio |> filter(!ticker %in% vrais_manquants)
 }
 
 # ==============================================================================
@@ -221,9 +241,15 @@ derniers_cours <- prices |>
 #   investi = quantité × prix de revient   (ce qu'on a payé)
 #   valeur  = quantité × dernier cours     (ce que ça vaut aujourd'hui)
 #   pnl     = valeur - investi             (la plus/moins-value latente)
+# Pour une ligne MANUELLE, le cours Yahoo est absent (NA après le join) :
+# coalesce() lui substitue le cours_manuel du CSV, et la date de
+# valorisation devient la dernière clôture connue du reste du portefeuille.
 positions <- portfolio |>
   left_join(derniers_cours, by = "ticker") |>
   mutate(
+    manuelle   = ticker %in% lignes_manuelles,
+    cours      = coalesce(cours, cours_manuel),
+    date_cours = coalesce(date_cours, derniere_cloture),
     investi = quantite * pmu,
     valeur  = quantite * cours,
     pnl     = valeur - investi,
@@ -252,6 +278,20 @@ total_investi <- sum(positions$investi)
 total_pnl     <- total_valeur - total_investi
 total_pnl_pct <- total_pnl / total_investi
 
+# Note affichée (dashboard + PDF) quand des lignes sont valorisées à la main :
+# elles comptent dans le patrimoine mais pas dans les analyses à historique.
+note_manuelles <- if (any(positions$manuelle)) {
+  paste0(
+    positions$nom[positions$manuelle] |> paste(collapse = ", "),
+    " : ligne(s) valorisée(s) à la main (cours saisi dans le CSV, sans ",
+    "historique) — compte(nt) dans le patrimoine et les allocations, mais ",
+    "sont exclue(s) des analyses de performance et de risque (évolution, ",
+    "corrélations, MEDAF, frontière efficiente)."
+  )
+} else {
+  ""
+}
+
 # ==============================================================================
 # 5. VALEUR QUOTIDIENNE DU PORTEFEUILLE
 # ==============================================================================
@@ -263,24 +303,34 @@ total_pnl_pct <- total_pnl / total_investi
 # différents Paris/Amsterdam par exemple). On passe donc par un tableau
 # « large » (une colonne par ticker), on reporte le dernier cours connu
 # avec fill() vers le bas, et on ne garde que les dates où toutes les
-# colonnes sont renseignées (drop_na).
+# colonnes sont renseignées (drop_na). Les lignes manuelles (sans série de
+# cours) sont naturellement absentes de `prices`, donc de `prix_larges`.
 date_debut <- max(positions$date_achat)
+positions_cotees <- positions |> filter(!manuelle)
 
 prix_larges <- prices |>
-  filter(symbol %in% positions$ticker, date >= date_debut) |>
+  filter(symbol %in% positions_cotees$ticker, date >= date_debut) |>
   select(symbol, date, close) |>
   pivot_wider(names_from = symbol, values_from = close) |>
   arrange(date) |>
   fill(-date, .direction = "down") |>
   drop_na()
 
+# Valeur constante des lignes manuelles (une seule valorisation connue) :
+# on la reporte sur toute la période pour que la courbe de valeur et le
+# total du portefeuille coïncident. Approximation assumée — un OPCVM
+# valorisé à un seul point est supposé stable sur l'historique ; l'effet
+# sur la volatilité mesurée est négligeable pour une petite ligne, et c'est
+# le comportement attendu d'un fonds patrimonial peu volatil.
+valeur_manuelle <- sum(positions$valeur[positions$manuelle])
+
 # Retour au format long pour multiplier chaque cours par la quantité
 # détenue, puis somme par date : c'est la valeur totale quotidienne.
 valeur_quotidienne <- prix_larges |>
   pivot_longer(-date, names_to = "ticker", values_to = "close") |>
-  left_join(select(positions, ticker, quantite), by = "ticker") |>
+  left_join(select(positions_cotees, ticker, quantite), by = "ticker") |>
   group_by(date) |>
-  summarise(valeur = sum(close * quantite), .groups = "drop")
+  summarise(valeur = sum(close * quantite) + valeur_manuelle, .groups = "drop")
 
 # Performance depuis le début de l'année (YTD, « year to date ») :
 # valeur actuelle rapportée à la première valeur de l'année en cours.

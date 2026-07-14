@@ -43,9 +43,21 @@ sont référencés sur Yahoo Finance par leur ISIN suffixé `.PA`, ex.
   valeur réelle du portefeuille, dimensionnement bêta-ajusté d'une couverture
   indicielle, scénarios types (vacances, crainte de krach…)
 
-Paramètres ajustables en tête du chunk `setup` d'`index.qmd` : taux sans risque
+Paramètres ajustables en tête de `R/pipeline.R` : taux sans risque
 (`taux_sans_risque`, 3 % par défaut), indice de marché (`indice_marche`, CAC 40),
 strikes et primes indicatives des options.
+
+### Cas particulier : un OPCVM non coté sur Yahoo Finance
+
+Certains fonds bancaires (OPCVM/FCP) ne sont pas diffusés par Yahoo Finance — par
+exemple **Atout Vert Horizon** (`FR0010036962.PA`). Pour une telle ligne,
+renseignez dans `portfolio.csv` **deux colonnes en plus** : `pmu` (le prix de
+revient, obligatoire ici puisqu'il ne peut pas être déduit d'un historique) et
+`cours_manuel` (la dernière valeur liquidative connue, **à tenir à jour à la
+main**). La ligne est alors valorisée dans le patrimoine, les tableaux et les
+allocations, mais **exclue des analyses à historique** (évolution, corrélations,
+MEDAF, frontière efficiente) faute de série de cours — un bandeau le signale en
+tête du dashboard et du rapport.
 
 ## 🚀 Démarrage rapide
 
@@ -76,11 +88,12 @@ Tout se passe dans **`portfolio.csv`** — une ligne par position :
 |--------------|-----------------------------------------------------------------------------|
 | `ticker`     | Ticker **Yahoo Finance** (`MC.PA` pour LVMH, `CW8.PA` pour l'ETF World…)     |
 | `nom`        | Libellé affiché dans le dashboard                                            |
-| `type`       | `Action` ou `ETF`                                                            |
+| `type`       | `Action`, `ETF` ou `OPCVM`                                                   |
 | `secteur`    | Secteur libre, utilisé pour le treemap d'allocation                          |
-| `quantite`   | Nombre de titres détenus                                                     |
+| `quantite`   | Nombre de titres/parts détenu·e·s                                            |
 | `date_achat` | Date d'achat au format `AAAA-MM-JJ`                                          |
 | `pmu`        | Prix moyen unitaire d'achat en €. **Optionnel** : si vide, le cours de clôture du premier jour coté après `date_achat` est utilisé |
+| `cours_manuel` | **Optionnel** : dernière valeur liquidative, à saisir uniquement pour un fonds non coté sur Yahoo (voir « Cas particulier » ci-dessus). Impose de renseigner aussi `pmu`. |
 
 Remplacez les lignes d'exemple par vos vraies positions, puis relancez
 `quarto render` (ou poussez le commit : la GitHub Action republiera le site).

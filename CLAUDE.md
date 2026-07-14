@@ -98,7 +98,16 @@ chunks d'affichage :
    achat ; les `close` NA sont filtrés immédiatement ; l'horodatage du
    téléchargement est conservé (`horodatage_donnees`, stocké dans le cache via
    `telecharge_le`) et affiché en tête de la Vue d'ensemble (`info_donnees`,
-   heure de Paris + date de dernière clôture) ;
+   heure de Paris + date de dernière clôture). Les tickers absents de Yahoo
+   sont scindés en `lignes_manuelles` (un `cours_manuel` est saisi dans le CSV
+   → OPCVM non coté, ex. `FR0010036962.PA`) et `vrais_manquants` (écartés avec
+   warning). Une **ligne manuelle** est valorisée à la main (colonne
+   `manuelle` de `positions`, `cours` ← `cours_manuel`), comptée dans le
+   patrimoine/allocations mais **exclue des analyses à historique** (elle
+   n'existe pas dans `prices`, donc `positions_cotees` = `!manuelle` pilote
+   `prix_larges`, `rendements`, `medaf`, frontière). Sa valeur constante est
+   réinjectée dans `valeur_quotidienne` (`valeur_manuelle`) pour que courbe et
+   total coïncident ; `note_manuelles` l'explicite dans les deux documents ;
 3. prix de revient : si `pmu` est vide dans le CSV, il est calculé comme le
    cours de clôture du premier jour coté suivant `date_achat` (fonction
    `premier_cours_apres`) — c'est un contrat documenté dans le README ;
@@ -149,11 +158,13 @@ de marches aléatoires — voir l'historique de session si besoin de le recréer
 ## Données
 
 - Tickers au format **Yahoo Finance** (suffixe `.PA` Paris, `.AS` Amsterdam).
-  Les **OPCVM non cotés** y sont référencés par leur **ISIN suffixé `.PA`**
-  (ex. Atout Vert Horizon = `FR0010036962.PA`). En cas de ligne écartée au
-  rendu, suspecter d'abord un ticker d'ETF renommé (fusions de gammes
-  Amundi/Lyxor) — le ticker `EWLDA.PA` n'a pas pu être contre-vérifié (repli :
-  `EWLD.PA`, part Dist).
+  Vérifiés le 13/07/2026 via une étape CI de diagnostic (`tq_get` sur des
+  candidats) : `EWLDA.PA` **n'existe pas** sur Yahoo → on utilise `EWLD.PA`
+  (Amundi MSCI World, part Dist) ; `CW8/DCAM/PSPS/PAEEM.PA` OK. L'OPCVM **Atout
+  Vert Horizon n'est coté sous aucune forme sur Yahoo** (`FR0010036962.PA`,
+  `F0GBR067L3.PA`, `0P00000LU4.F` → tous vides) : d'où le mécanisme
+  `cours_manuel`. En cas de ligne écartée au rendu, suspecter d'abord un ticker
+  d'ETF renommé (fusions de gammes Amundi/Lyxor) et refaire ce diagnostic.
 - Les actions de `portfolio.csv` appartiennent au CAC 40 (composition du
   22/12/2025) ; l'indice évolue à chaque revue trimestrielle d'Euronext (mars,
   juin, septembre, décembre). Garder **10 lignes maximum** dans le CSV — les

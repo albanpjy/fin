@@ -1,11 +1,11 @@
-ticker,nom,type,secteur,quantite,date_achat,pmu
-CW8.PA,ETF Monde (CW8),ETF,Monde,10,2025-01-15,
-EWLDA.PA,ETF Monde (EWLDA),ETF,Monde,35,2025-01-15,
-DCAM.PA,ETF PEA Monde (DCAM),ETF,Monde,250,2025-03-03,
-PSPS.PA,ETF PEA S&P 500 (PSPS),ETF,USA,230,2025-03-03,
-PAEEM.PA,ETF Émergents (PAEEM),ETF,Émergents,80,2025-01-15,
-FR0010036962.PA,Atout Vert Horizon,OPCVM,Diversifié,20,2025-01-15,
-AI.PA,Air Liquide,Action,Industrie,8,2025-03-03,
-CA.PA,Carrefour,Action,Distribution,90,2025-03-03,
-MC.PA,LVMH,Action,Luxe,2,2025-06-02,
-TTE.PA,TotalEnergies,Action,Énergie,20,2025-09-01,
+ticker,nom,type,secteur,quantite,date_achat,pmu,cours_manuel
+CW8.PA,ETF Monde (CW8),ETF,Monde,10,2025-01-15,,
+EWLD.PA,ETF Monde (EWLD),ETF,Monde,35,2025-01-15,,
+DCAM.PA,ETF PEA Monde (DCAM),ETF,Monde,250,2025-03-03,,
+PSPS.PA,ETF PEA S&P 500 (PSPS),ETF,USA,230,2025-03-03,,
+PAEEM.PA,ETF Émergents (PAEEM),ETF,Émergents,80,2025-01-15,,
+FR0010036962.PA,Atout Vert Horizon,OPCVM,Diversifié,20,2025-01-15,14.20,15.00
+AI.PA,Air Liquide,Action,Industrie,8,2025-03-03,,
+CA.PA,Carrefour,Action,Distribution,90,2025-03-03,,
+MC.PA,LVMH,Action,Luxe,2,2025-06-02,,
+TTE.PA,TotalEnergies,Action,Énergie,20,2025-09-01,,
