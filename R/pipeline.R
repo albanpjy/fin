@@ -47,6 +47,16 @@ col_neg <- "#e34948"; col_muted <- "#898781"; col_ink <- "#0b0b0b"
 eur <- function(x) paste0(format(round(x), big.mark = " ", scientific = FALSE, trim = TRUE), " €")
 pct <- function(x) paste0(format(round(100 * x, 1), decimal.mark = ",", trim = TRUE), " %")
 num <- function(x, d = 2) format(round(x, d), decimal.mark = ",", trim = TRUE)
+# qte() : nombre de titres/parts, à la française. Entier affiché sans
+# décimale (100, 2 500) ; part fractionnaire d'OPCVM avec la virgule
+# (2 261,52). Évite les « .00 » disgracieux dans le tableau des positions.
+qte <- function(x) vapply(x, function(v) {
+  if (isTRUE(all.equal(v, round(v)))) {
+    format(round(v), big.mark = " ", scientific = FALSE, trim = TRUE)
+  } else {
+    format(round(v, 3), big.mark = " ", decimal.mark = ",", trim = TRUE, scientific = FALSE)
+  }
+}, character(1))
 
 # ==============================================================================
 # 1. LECTURE DU PORTEFEUILLE

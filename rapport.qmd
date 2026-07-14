@@ -35,9 +35,19 @@ format:
       text: |
         \usepackage{microtype}
         \usepackage{booktabs}
+        \usepackage{etoolbox}
         \setkomafont{disposition}{\rmfamily\bfseries}
         \addtokomafont{caption}{\small}
         \setcapindent{0pt}
+        % Mise en forme homogène et « aérée » de tous les tableaux :
+        % police réduite (le tableau des positions tient alors dans la marge
+        % et reste centré), interligne un peu plus généreux, colonnes moins
+        % serrées, filets booktabs plus fins.
+        \AtBeginEnvironment{tabular}{\small}
+        \renewcommand{\arraystretch}{1.18}
+        \setlength{\tabcolsep}{5pt}
+        \setlength{\heavyrulewidth}{0.9pt}
+        \setlength{\lightrulewidth}{0.4pt}
 execute:
   echo: false
   warning: false
@@ -146,7 +156,7 @@ tibble(
 positions |>
   arrange(desc(valeur)) |>
   transmute(
-    Ligne = nom, Ticker = ticker, `Qté` = quantite,
+    Ligne = nom, Ticker = ticker, `Qté` = qte(quantite),
     PMU = eur(pmu), Cours = eur(cours), Valeur = eur(valeur),
     `+/-` = eur(pnl), `+/- (%)` = pct(pnl_pct),
     Poids = pct(poids)
