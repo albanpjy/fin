@@ -148,12 +148,13 @@ tibble(
 
 ```{r}
 #| label: table-positions
+#| output: asis
 
 # Chaque colonne est formatée en amont (chaînes de caractères) pour un
 # contrôle total de la typographie : espaces des milliers, virgules…
 # La plus/moins-value est scindée en deux colonnes (euros / pourcentage)
 # pour éviter tout retour à la ligne dans les cellules.
-positions |>
+tbl_positions <- positions |>
   arrange(desc(valeur)) |>
   transmute(
     Ligne = nom, Ticker = ticker, `Qté` = qte(quantite),
@@ -163,6 +164,17 @@ positions |>
   ) |>
   knitr::kable(format = "latex", booktabs = TRUE, linesep = "", align = "llrrrrrrr",
                caption = "Détail des positions, triées par valeur décroissante")
+
+# Ce tableau à 9 colonnes est plus large que la zone de texte. On enveloppe
+# le `tabular` dans un \resizebox calé sur \linewidth pour GARANTIR qu'il
+# tienne dans la marge (le \ifdim ne rétrécit que s'il déborde — jamais
+# d'agrandissement d'un tableau plus étroit). Résultat centré, sans débordement.
+tbl_positions <- sub(
+  "\\begin{tabular}",
+  "\\resizebox{\\ifdim\\width>\\linewidth\\linewidth\\else\\width\\fi}{!}{%\n\\begin{tabular}",
+  tbl_positions, fixed = TRUE)
+tbl_positions <- sub("\\end{tabular}", "\\end{tabular}}", tbl_positions, fixed = TRUE)
+cat(tbl_positions)
 ```
 
 ```{r}
