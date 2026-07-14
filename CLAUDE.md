@@ -58,7 +58,12 @@ sur push (`main` et `fin`), chaque jour ouvré à 18 h UTC (cron), et manuelleme
   « Resource not accessible by integration ») ;
 - les packages R viennent en binaire de Posit RSPM (`use-public-rspm`) et sont
   mis en cache (`actions/cache` sur `R_LIBS_USER`) ; `rmarkdown` est requis en
-  plus des packages du dashboard pour que Quarto exécute les chunks R.
+  plus des packages du dashboard pour que Quarto exécute les chunks R ;
+- **TinyTeX est aussi mis en cache** (`actions/cache` sur `~/.TinyTeX`, clé
+  indexée sur `rapport.qmd` + `restore-keys`) : après le premier run les paquets
+  LaTeX sont restaurés en quelques secondes, ce qui accélère le rendu et évite
+  les aléas de téléchargement (`no matching packages`). Bumper la clé si un
+  besoin LaTeX change et que le cache doit repartir de zéro.
 
 ## Architecture
 

@@ -45,6 +45,19 @@ jobs:
             if (length(manquants) > 0) install.packages(manquants)
           '
 
+      # Persiste l'arborescence TinyTeX (paquets LaTeX : koma-script, fontspec,
+      # babel-french…) d'un run à l'autre : après le premier run, les paquets
+      # sont restaurés en quelques secondes au lieu d'être re-téléchargés, ce
+      # qui accélère le rendu ET supprime les aléas de téléchargement à la
+      # volée. La clé dépend de rapport.qmd (nouveaux besoins LaTeX = nouveau
+      # cache), avec repli sur le cache précédent comme base (restore-keys).
+      - name: Cache de TinyTeX (paquets LaTeX)
+        uses: actions/cache@v4
+        with:
+          path: ~/.TinyTeX
+          key: tinytex-${{ runner.os }}-${{ hashFiles('rapport.qmd') }}
+          restore-keys: tinytex-${{ runner.os }}-
+
       - name: Installer Quarto et TinyTeX (LaTeX pour le rapport PDF)
         uses: quarto-dev/quarto-actions/setup@v2
         with:
