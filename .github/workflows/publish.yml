@@ -14,7 +14,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: pages
+  # Groupe par référence git (branche) : un nouveau push sur `main` annule
+  # le run `main` en cours, mais PAS un run `fin` — sinon deux pushes quasi
+  # simultanés sur main et fin s'annulaient mutuellement. Chaque branche a
+  # sa file d'attente ; les deux publient le même contenu sur gh-pages.
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
