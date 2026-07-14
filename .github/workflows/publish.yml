@@ -50,6 +50,12 @@ jobs:
         with:
           tinytex: true
 
+      # Rafraîchit la base de paquets de tlmgr : évite les « no matching
+      # packages » lors de l'installation à la volée des paquets LaTeX
+      # (koma-script, fontspec, babel-french…) par Quarto. Best-effort.
+      - name: Rafraîchir la base de paquets LaTeX (robustesse CI)
+        run: tlmgr update --self || true
+
       - name: Rendre le dashboard et le rapport PDF
         run: quarto render
 

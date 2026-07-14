@@ -7,6 +7,10 @@ date-format: "D MMMM YYYY"
 lang: fr
 format:
   pdf:
+    # xelatex : gère nativement l'Unicode (€, accents, français) sans passer
+    # par la machinerie lualatex/babel `luatexbase`/`selnolig` — celle-ci
+    # dépend d'un paquet parfois indisponible à l'installation à la volée en CI.
+    pdf-engine: xelatex
     documentclass: scrartcl
     classoption: ["DIV=11", "parskip=half"]
     papersize: a4
