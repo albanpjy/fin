@@ -5,6 +5,17 @@ author: "Alban VIDELOUP"
 date: today
 date-format: "D MMMM YYYY"
 lang: fr
+abstract: |
+  Ce rapport valorise et analyse quotidiennement un portefeuille d'actions,
+  d'ETF et d'OPCVM à partir des cours de clôture Yahoo Finance. Il présente la
+  photographie du patrimoine (valorisation, plus-value latente, allocations par
+  ligne et par type d'actif), la performance comparée à un indice de référence
+  (CAC 40) et à l'indice mondial, puis une batterie d'indicateurs de risque —
+  volatilité, ratios de Sharpe et de Sortino, Value at Risk, drawdown maximal,
+  bêta et alpha de Jensen par le MEDAF — complétés par une frontière efficiente
+  simulée et une revue des stratégies de couverture par options. Une annexe
+  développe les fondements théoriques mobilisés. Document pédagogique généré
+  automatiquement ; il ne constitue pas un conseil en investissement.
 format:
   pdf:
     # xelatex : gère nativement l'Unicode (€, accents, français) sans passer
@@ -150,12 +161,47 @@ positions |>
 #| fig-height: 2.9
 
 # Barres horizontales triées : l'équivalent imprimable du treemap du
-# dashboard. La couleur distingue actions et ETF (ordre fixe de la palette).
+# dashboard. La couleur distingue les types d'actif (ordre fixe de la palette).
+couleurs_type <- c("Action" = col_s1, "ETF" = col_s2, "OPCVM" = col_s3)
+
 ggplot(positions, aes(valeur, reorder(nom, valeur), fill = type)) +
   geom_col(width = 0.72) +
-  scale_fill_manual(values = c("Action" = col_s1, "ETF" = col_s2)) +
+  scale_fill_manual(values = couleurs_type) +
   scale_x_continuous(labels = lab_eur, expand = expansion(mult = c(0, 0.05))) +
   labs(x = "Valeur de marché", y = NULL)
+```
+
+```{r}
+#| label: fig-donut
+#| fig-cap: "Répartition du portefeuille par type d'actif (Action / ETF / OPCVM)"
+#| fig-height: 3.1
+
+# Donut (l'équivalent imprimable du camembert du dashboard) : part de chaque
+# type d'actif dans la valeur totale. Construit avec geom_rect + coord_polar :
+# chaque type occupe un arc proportionnel à son poids ; le trou central
+# (xmin > 0) donne l'aspect « donut ». L'étiquette au centre rappelle le total.
+alloc_type <- positions |>
+  group_by(type) |>
+  summarise(valeur = sum(valeur), .groups = "drop") |>
+  arrange(desc(valeur)) |>
+  mutate(
+    part = valeur / sum(valeur),
+    ymax = cumsum(part),
+    ymin = lag(ymax, default = 0),
+    milieu = (ymin + ymax) / 2,
+    etiquette = paste0(type, "\n", pct(part))
+  )
+
+ggplot(alloc_type, aes(ymin = ymin, ymax = ymax, xmin = 2.6, xmax = 4)) +
+  geom_rect(aes(fill = type), color = "white", linewidth = 0.6) +
+  geom_text(aes(x = 4.35, y = milieu, label = etiquette),
+            size = 3, lineheight = 0.9, color = "#0b0b0b") +
+  annotate("text", x = 0, y = 0, label = eur(total_valeur),
+           fontface = "bold", size = 3.4, color = "#52514e") +
+  coord_polar(theta = "y") +
+  xlim(c(0, 4.9)) +
+  scale_fill_manual(values = couleurs_type, guide = "none") +
+  theme_void()
 ```
 
 # Performance
