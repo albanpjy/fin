@@ -24,6 +24,10 @@ concurrency:
 jobs:
   publier:
     runs-on: ubuntu-latest
+    # Exposé au niveau du job pour que l'étape d'email puisse se désactiver
+    # proprement tant que le secret n'est pas configuré (voir son `if`).
+    env:
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
@@ -101,3 +105,40 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
           commit_message: "Publication du dashboard"
+
+      # Notification par email du rapport du jour. Ne se déclenche que pour la
+      # publication quotidienne (cron) ou un lancement manuel — pas à chaque
+      # push de développement — et seulement si le secret MAIL_USERNAME est
+      # configuré (sinon l'étape est ignorée, le pipeline reste vert).
+      # Prérequis (à faire une fois dans Settings → Secrets and variables →
+      # Actions) : MAIL_USERNAME = votre adresse Gmail, MAIL_PASSWORD = un
+      # « mot de passe d'application » Google (16 caractères, 2FA requise).
+      - name: Date du jour (pour l'objet de l'email)
+        id: dt
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.MAIL_USERNAME != ''
+        run: echo "fr=$(date +%d/%m/%Y)" >> "$GITHUB_OUTPUT"
+
+      - name: Notifier par email (rapport du jour)
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.MAIL_USERNAME != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: Portfolio Tracker <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_USERNAME }}
+          subject: "Portfolio Tracker — rapport du ${{ steps.dt.outputs.fr }}"
+          body: |
+            Bonjour,
+
+            Le rapport de portefeuille du ${{ steps.dt.outputs.fr }} vient d'être publié.
+
+            • Dashboard interactif : https://albanpjy.github.io/fin/
+            • Rapport PDF : https://albanpjy.github.io/fin/rapport.pdf
+
+            Le PDF du jour est joint à cet email.
+
+            — Généré automatiquement par Portfolio Tracker (Alban VIDELOUP)
+          attachments: docs/rapport.pdf

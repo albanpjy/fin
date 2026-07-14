@@ -15,6 +15,23 @@ le bouton « Rapport PDF » de la barre du dashboard, et archivé chaque jour de
 bourse dans [`exports/`](exports/) sous un nom horodaté
 (`portfolio-tracker_AAAA-MM-JJ.pdf`).
 
+**📧 Notification par email (optionnel)** — le workflow peut envoyer chaque
+jour un email (lien du dashboard + PDF en pièce jointe) lors de la publication
+quotidienne (cron) ou d'un lancement manuel. C'est **désactivé tant que les
+secrets ne sont pas configurés** ; pour l'activer, une fois :
+
+1. Créez un **mot de passe d'application** Google (compte Google → Sécurité →
+   Validation en 2 étapes → Mots de passe des applications) — 16 caractères.
+2. Dans le dépôt GitHub : **Settings → Secrets and variables → Actions → New
+   repository secret**, ajoutez :
+   - `MAIL_USERNAME` = votre adresse Gmail
+   - `MAIL_PASSWORD` = le mot de passe d'application généré à l'étape 1
+3. C'est tout : le prochain run planifié (ou `Run workflow` manuel) enverra
+   l'email. Les pushes de développement ne déclenchent volontairement pas de mail.
+
+*(Pour un autre fournisseur que Gmail, ajustez `server_address`/`server_port`
+dans `.github/workflows/publish.yml`.)*
+
 Dashboard [Quarto](https://quarto.org/) en R pour suivre un portefeuille d'actions et d'ETF :
 valorisation au dernier cours, plus/moins-values latentes, allocation sectorielle et
 évolution de la valeur dans le temps. Les cours sont récupérés gratuitement sur
