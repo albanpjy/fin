@@ -1,0 +1,348 @@
+---
+title: "Météo Villes"
+author: "Alban VIDELOUP"
+format:
+  dashboard:
+    theme: cosmo
+    orientation: rows
+    nav-buttons:
+      - icon: github
+        href: https://github.com/albanpjy/fin
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# ============================================================================
+# MÉTÉO VILLES — dashboard HTML
+# Auteur : Alban VIDELOUP
+#
+# Toute la mécanique de données et de calculs (lecture des villes, appels à
+# l'API Open-Meteo avec cache quotidien, normales saisonnières, anomalies,
+# records historiques…) vit dans R/pipeline_meteo.R. Ce chunk ne garde que ce
+# qui est propre au dashboard interactif : les librairies d'affichage.
+# ============================================================================
+
+library(plotly)   # graphiques interactifs (zoom, survol…)
+library(DT)       # tableaux interactifs (tri, recherche…)
+
+source("R/pipeline_meteo.R", encoding = "UTF-8")
+```
+
+# 🌤️ Aujourd'hui
+
+## Row {height="8%"}
+
+::: {.card}
+`r info_donnees`
+
+`r if (nzchar(note_echecs)) paste0("⚠️ ", note_echecs)`
+:::
+
+## Row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Ville la plus chaude"
+list(
+  icon  = "thermometer-sun",
+  color = "danger",
+  value = paste0(ville_plus_chaude, " · ", deg(temp_plus_chaude))
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Ville la plus fraîche"
+list(
+  icon  = "thermometer-snow",
+  color = "primary",
+  value = paste0(ville_plus_froide, " · ", deg(temp_plus_froide))
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Écart moyen à la normale saisonnière"
+# Moyenne, sur les 5 villes, de l'écart entre la maximale du jour et la
+# normale calculée sur l'historique (± 7 jours, toutes années confondues).
+list(
+  icon  = if (anomalie_moyenne >= 0) "arrow-up-circle" else "arrow-down-circle",
+  color = if (abs(anomalie_moyenne) < 2) "light" else if (anomalie_moyenne >= 0) "warning" else "info",
+  value = paste0(if (anomalie_moyenne >= 0) "+" else "", num1(anomalie_moyenne), " °C")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Vigilance météo"
+list(
+  icon  = if (length(villes_en_alerte) > 0) "exclamation-triangle" else "check-circle",
+  color = if (length(villes_en_alerte) > 0) "danger" else "success",
+  value = alerte_texte
+)
+```
+
+## Row {height="36%"}
+
+```{r}
+#| title: "Conditions actuelles par ville"
+actuel |>
+  transmute(
+    Ville = ville,
+    Météo = paste(emoji_meteo, libelle_meteo),
+    `Température` = round(temperature, 1),
+    `Ressenti` = round(ressenti, 1),
+    `Humidité (%)` = round(humidite, 0),
+    `Vent (km/h)` = round(vent, 0)
+  ) |>
+  datatable(
+    rownames = FALSE,
+    options = list(dom = "t", paging = FALSE, ordering = FALSE),
+    class = "compact stripe"
+  )
+```
+
+```{r}
+#| title: "Température actuelle et ressentie"
+plot_ly(actuel, x = ~ville, y = ~temperature, type = "bar", name = "Température",
+        marker = list(color = col_s1)) |>
+  add_trace(y = ~ressenti, name = "Ressenti", marker = list(color = col_s5)) |>
+  layout(
+    barmode = "group",
+    xaxis = list(title = ""),
+    yaxis = list(title = "°C"),
+    legend = list(orientation = "h", x = 0, y = 1.15)
+  )
+```
+
+## Row {height="36%"}
+
+```{r}
+#| title: "Humidité actuelle par ville"
+plot_ly(actuel, x = ~ville, y = ~humidite, type = "bar",
+        marker = list(color = col_s2)) |>
+  layout(xaxis = list(title = ""), yaxis = list(title = "%", range = c(0, 100)))
+```
+
+```{r}
+#| title: "Indice UV maximal du jour"
+uv_jour <- previsions |> filter(date == Sys.Date())
+plot_ly(uv_jour, x = ~ville, y = ~uv_index_max, type = "bar",
+        marker = list(color = col_s3),
+        text = ~as.character(classe_uv), textposition = "outside") |>
+  layout(xaxis = list(title = ""), yaxis = list(title = "Indice UV"))
+```
+
+# 📅 Prévisions 15 jours
+
+## Row {height="8%"}
+
+::: {.card}
+Prévisions du jour même et des 15 jours suivants (soit `r jours_prevision` jours), complétées par
+`r jours_passes_pont` jours récemment observés pour situer la tendance.
+:::
+
+## Row {height="46%"}
+
+```{r}
+#| title: "Températures min / max — 16 prochains jours"
+g <- previsions |>
+  filter(date >= Sys.Date()) |>
+  ggplot(aes(x = date, fill = ville, colour = ville)) +
+  geom_ribbon(aes(ymin = temperature_2m_min, ymax = temperature_2m_max), alpha = 0.25, colour = NA) +
+  geom_line(aes(y = temperature_2m_max), linewidth = 0.6) +
+  geom_line(aes(y = temperature_2m_min), linewidth = 0.6, linetype = "dashed") +
+  facet_wrap(~ville, ncol = 3, scales = "free_y") +
+  scale_fill_manual(values = couleurs_villes, guide = "none") +
+  scale_colour_manual(values = couleurs_villes, guide = "none") +
+  labs(x = NULL, y = "°C") +
+  theme_minimal(base_size = 11)
+
+ggplotly(g) |> layout(margin = list(t = 30))
+```
+
+## Row {height="46%"}
+
+```{r}
+#| title: "Précipitations et probabilité de pluie"
+g2 <- previsions |>
+  filter(date >= Sys.Date()) |>
+  ggplot(aes(x = date, y = precipitation_sum, fill = ville)) +
+  geom_col() +
+  facet_wrap(~ville, ncol = 3, scales = "free_y") +
+  scale_fill_manual(values = couleurs_villes, guide = "none") +
+  labs(x = NULL, y = "Précipitations (mm)") +
+  theme_minimal(base_size = 11)
+
+ggplotly(g2) |> layout(margin = list(t = 30))
+```
+
+## Row {height="8%"}
+
+```{r}
+#| title: "Détail jour par jour"
+previsions |>
+  filter(date >= Sys.Date()) |>
+  transmute(
+    Ville = ville,
+    Date = format(date, "%d/%m/%Y"),
+    Météo = paste(emoji_meteo, libelle_meteo),
+    `Min (°C)` = round(temperature_2m_min, 1),
+    `Max (°C)` = round(temperature_2m_max, 1),
+    `Ressenti min/max` = paste0(round(apparent_temperature_min, 1), " / ", round(apparent_temperature_max, 1)),
+    `Humidité moy. (%)` = round(humidite_moy, 0),
+    `Pluie (mm)` = round(precipitation_sum, 1),
+    `Proba pluie (%)` = precipitation_probability_max,
+    `Vent max (km/h)` = round(wind_speed_10m_max, 0),
+    `UV max` = round(uv_index_max, 1),
+    `Lever / coucher` = paste0(substr(sunrise, 12, 16), " / ", substr(sunset, 12, 16))
+  ) |>
+  datatable(
+    rownames = FALSE,
+    filter = "top",
+    options = list(pageLength = 16, order = list(list(0, "asc"), list(1, "asc"))),
+    class = "compact stripe"
+  )
+```
+
+# 📈 Historique
+
+## Row {height="8%"}
+
+::: {.card}
+Historique construit à partir des réanalyses ERA5 d'Open-Meteo, depuis le
+`r format(min(records$debut_historique), "%d/%m/%Y")` — la durée maximale
+disponible chez ce fournisseur.
+:::
+
+## Row {height="22%"}
+
+```{r}
+#| content: valuebox
+#| title: "Record de chaleur"
+i <- which.max(records$record_chaud)
+list(
+  icon  = "thermometer-high",
+  color = "danger",
+  value = paste0(deg(records$record_chaud[i]), " — ", records$ville[i], " (",
+                  format(records$date_record_chaud[i], "%d/%m/%Y"), ")")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Record de froid"
+j <- which.min(records$record_froid)
+list(
+  icon  = "thermometer-low",
+  color = "primary",
+  value = paste0(deg(records$record_froid[j]), " — ", records$ville[j], " (",
+                  format(records$date_record_froid[j], "%d/%m/%Y"), ")")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Villes suivies"
+list(icon = "geo-alt", color = "light", value = length(ordre_villes))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Profondeur d'historique"
+annees_histo <- as.numeric(difftime(max(records$fin_historique), min(records$debut_historique), units = "days")) / 365.25
+list(icon = "calendar-range", color = "light", value = paste0(round(annees_histo), " ans"))
+```
+
+## Row {height="36%"}
+
+```{r}
+#| title: "Évolution de la température maximale annuelle moyenne"
+g3 <- tendance_annuelle |>
+  ggplot(aes(x = annee, y = tmax_moy, colour = ville)) +
+  geom_line(linewidth = 0.5, alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  scale_colour_manual(values = couleurs_villes) +
+  labs(x = NULL, y = "°C (moyenne annuelle des maximales)", colour = NULL) +
+  theme_minimal(base_size = 11)
+
+ggplotly(g3) |> layout(legend = list(orientation = "h", x = 0, y = 1.15))
+```
+
+```{r}
+#| title: "Écart à la normale saisonnière — aujourd'hui"
+plot_ly(
+  previsions_jour, x = ~ville, y = ~anomalie_tmax, type = "bar",
+  marker = list(
+    color = ~anomalie_tmax,
+    colorscale = scale_div,
+    cmid = 0,
+    showscale = FALSE
+  )
+) |>
+  layout(xaxis = list(title = ""), yaxis = list(title = "Écart à la normale (°C)"))
+```
+
+## Row {height="26%"}
+
+```{r}
+#| title: "Records et profondeur d'historique par ville"
+records |>
+  transmute(
+    Ville = ville,
+    `Record chaud (°C)` = round(record_chaud, 1),
+    `Date record chaud` = format(date_record_chaud, "%d/%m/%Y"),
+    `Record froid (°C)` = round(record_froid, 1),
+    `Date record froid` = format(date_record_froid, "%d/%m/%Y"),
+    `Historique depuis` = format(debut_historique, "%d/%m/%Y"),
+    `Jusqu'au` = format(fin_historique, "%d/%m/%Y")
+  ) |>
+  datatable(rownames = FALSE, options = list(dom = "t", paging = FALSE), class = "compact stripe")
+```
+
+# ℹ️ À propos {scrolling="true"}
+
+::: {.card title="Le projet"}
+**Météo Villes** présente chaque jour la météo de cinq villes — Rueil-Malmaison,
+Granville, Servon (50170), Rennes et Casablanca — pour le jour même et les
+15 jours suivants, ainsi qu'un historique construit sur la plus longue période
+disponible. Le dashboard est régénéré automatiquement chaque jour.
+:::
+
+::: {.card title="Méthodologie"}
+- **Prévisions** (jour même + 15 jours) : API `forecast` d'Open-Meteo, complétée
+  par `r jours_passes_pont` jours récemment observés (paramètre `past_days`)
+  pour raccorder l'historique aux prévisions sans trou.
+- **Historique** : API `archive` d'Open-Meteo (réanalyses ERA5), depuis le
+  `r format(min(records$debut_historique), "%d/%m/%Y")`.
+- **Ressenti** (chaleur ressentie) : indice « température apparente » d'Open-Meteo,
+  qui combine température, humidité et vent.
+- **Humidité quotidienne** : Open-Meteo ne fournit pas d'agrégat quotidien natif ;
+  elle est calculée ici (moyenne, min, max) à partir de la série horaire.
+- **Normale saisonnière** et **anomalie** : moyenne des températures observées
+  le même jour de l'année (± 7 jours, toutes les années depuis 1940), comparée
+  à la prévision du jour.
+- **Coordonnées des villes** : latitude/longitude fixées à l'avance (`villes.csv`)
+  plutôt qu'un géocodage par nom, pour éviter toute ambiguïté (plusieurs
+  communes françaises portent le même nom — le code postal 50170 désigne sans
+  ambiguïté le Servon de la Manche).
+
+**Limites à garder en tête** : les réanalyses ERA5 ont une résolution spatiale
+d'environ 9 km (une valeur unique pour toute une zone, pas une station
+précise) ; l'incertitude des prévisions croît avec l'horizon, les jours 10 à 15
+étant surtout indicatifs d'une tendance.
+:::
+
+::: {.card title="Source des données"}
+Données météo par [Open-Meteo.com](https://open-meteo.com/), sous licence
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — API gratuite, sans
+clé requise.
+:::
+
+::: {.card title="À propos du projet"}
+Auteur : **Alban VIDELOUP**. Code source et historique des évolutions sur
+[GitHub](https://github.com/albanpjy/fin) (dossier `meteo/`). Rendu et publié
+automatiquement chaque jour.
+:::

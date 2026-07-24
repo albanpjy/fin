@@ -104,6 +104,10 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
+          # keep_files : préserve le sous-dossier meteo/ (publié séparément
+          # par .github/workflows/publish-meteo.yml) au lieu de le wiper à
+          # chaque publication du dashboard portefeuille.
+          keep_files: true
           commit_message: "Publication du dashboard"
 
       # Notification par email du rapport du jour. Ne se déclenche que pour la

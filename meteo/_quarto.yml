@@ -1,0 +1,11 @@
+project:
+  title: "Météo Villes"
+  output-dir: docs
+  render:
+    - index.qmd
+
+lang: fr
+
+execute:
+  warning: false
+  message: false

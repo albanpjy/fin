@@ -6,6 +6,12 @@ cache_cours.rds
 /.quarto/
 /index_files/
 
+# Projet météo (meteo/) — cache Open-Meteo et sortie Quarto
+meteo/cache_meteo.rds
+meteo/docs/
+meteo/.quarto/
+meteo/index_files/
+
 # R
 .Rproj.user/
 .Rhistory

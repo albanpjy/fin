@@ -4,6 +4,10 @@
 
 [![Publier le dashboard](https://github.com/albanpjy/fin/actions/workflows/publish.yml/badge.svg)](https://github.com/albanpjy/fin/actions/workflows/publish.yml)
 
+> Ce dépôt héberge aussi un second projet indépendant : **[Météo Villes](meteo/README.md)**,
+> un dashboard météo quotidien (dossier [`meteo/`](meteo/)), en ligne sur
+> <https://albanpjy.github.io/fin/meteo/>.
+
 **🌐 Dashboard en ligne : <https://albanpjy.github.io/fin/>** — re-généré
 automatiquement du lundi au vendredi à 18 h UTC (après la clôture d'Euronext)
 par une GitHub Action, et à chaque push. La date et l'heure de récupération
