@@ -59,8 +59,17 @@ celle de la Manche, près du Mont-Saint-Michel).
 
 Comme pour le Portfolio Tracker, un cache quotidien local
 (`cache_meteo.rds`, gitignoré) évite de solliciter Open-Meteo à chaque
-aperçu local le même jour ; en cas de panne réseau, un vieux cache sert de
-repli avec un avertissement.
+aperçu local le même jour pour les prévisions ; en cas de panne réseau, un
+vieux cache sert de repli avec un avertissement.
+
+L'historique (86 ans × 5 villes) fonctionne différemment : le retélécharger
+en entier à chaque rendu saturerait vite l'API gratuite (observé en
+pratique : rate-limit après deux rendus rapprochés). Il est donc mis en
+cache dans [`historique.rds`](historique.rds), **committé dans le dépôt** et
+mis à jour de façon incrémentale par le workflow — chaque rendu ne demande
+que les jours manquants depuis la dernière fois (généralement 0 à quelques
+jours), avec retry/backoff (`req_retry`, `req_throttle`) sur les appels
+Open-Meteo pour absorber les erreurs transitoires (429/5xx).
 
 ## Commandes
 

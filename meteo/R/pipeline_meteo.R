@@ -15,13 +15,18 @@
 #     réanalyses historiques ;
 #   - API archive (archive-api.open-meteo.com/v1/archive) : réanalyses ERA5
 #     depuis le 1er janvier 1940 (durée maximale disponible chez Open-Meteo)
-#     jusqu'à quelques jours avant aujourd'hui.
+#     jusqu'à quelques jours avant aujourd'hui. Une fois publiées, ces
+#     réanalyses ne changent quasiment jamais : on ne les re-télécharge donc
+#     PAS en entier à chaque rendu (86 ans x 5 villes tous les jours saturerait
+#     vite l'API gratuite — observé en pratique). historique.rds, COMMITÉ dans
+#     le dépôt, sert de cache persistant mis à jour de façon incrémentale :
+#     chaque rendu ne demande que les jours manquants depuis la dernière fois.
 #
 # Le déroulé, dans l'ordre :
 #   1. lecture des villes (villes.csv)
-#   2. récupération des prévisions (jour même + 15 jours), avec cache
+#   2. récupération de l'historique long terme, cache persistant incrémental
+#   3. récupération des prévisions (jour même + 15 jours), avec cache
 #      quotidien local
-#   3. récupération de l'historique long terme (1940 → aujourd'hui - 7j)
 #   4. mise en forme : table météo (codes OMM), humidité horaire agrégée
 #   5. indicateurs dérivés : normales saisonnières, anomalies, records
 #   6. jeux de données prêts pour les graphiques et tableaux du dashboard
@@ -45,7 +50,8 @@ delai_archive <- 7                # marge (jours) avant aujourd'hui pour la
                                    # requête archive : les tout derniers jours
                                    # n'y sont pas encore publiés
 
-fichier_cache <- "cache_meteo.rds"
+fichier_cache <- "cache_meteo.rds"       # cache quotidien (gitignoré) : prévisions + instant présent
+fichier_historique <- "historique.rds"   # cache persistant (COMMITÉ) : voir section 3b
 
 # ---- Palette de couleurs (cohérente avec le projet Portfolio Tracker) ----------
 # 5 couleurs catégorielles (une par ville, ordre fixe = ordre du CSV) : les 3
@@ -216,7 +222,9 @@ recupere_previsions_ville <- function(v) {
   })
 }
 
-recupere_historique_ville <- function(v) {
+# depuis/jusqua : plage à demander à l'API (voir recupere_historique_incremental
+# plus bas, qui calcule cette plage pour ne demander que les jours manquants).
+recupere_historique_ville <- function(v, depuis, jusqua) {
   tryCatch({
     resp <- request(url_historique) |>
       req_throttle(rate = 1 / 2, realm = "open-meteo") |>
@@ -225,8 +233,8 @@ recupere_historique_ville <- function(v) {
         latitude   = v$latitude,
         longitude  = v$longitude,
         timezone   = v$fuseau,
-        start_date = format(date_debut_historique, "%Y-%m-%d"),
-        end_date   = format(Sys.Date() - delai_archive, "%Y-%m-%d"),
+        start_date = format(depuis, "%Y-%m-%d"),
+        end_date   = format(jusqua, "%Y-%m-%d"),
         daily      = paste(c("temperature_2m_max", "temperature_2m_min",
                               "temperature_2m_mean", "precipitation_sum"),
                             collapse = ",")
@@ -245,58 +253,89 @@ recupere_historique_ville <- function(v) {
   })
 }
 
-# ---- Téléchargement (ou relecture du cache) ------------------------------------
+# ---- 3b. Historique : cache persistant et incrémental --------------------------
+# Exécuté à CHAQUE rendu, y compris plusieurs fois le même jour : sans coût
+# réseau si déjà à jour (depuis > jusqua ci-dessous), donc pas besoin de le
+# soumettre au cache quotidien des prévisions.
+historique_existant <- if (file.exists(fichier_historique)) {
+  readRDS(fichier_historique)
+} else {
+  tibble()
+}
+
+recupere_historique_incremental <- function(v) {
+  deja <- if (nrow(historique_existant) > 0) {
+    filter(historique_existant, as.character(ville) == v$ville)
+  } else {
+    tibble()
+  }
+  depuis <- if (nrow(deja) > 0) max(deja$date) + 1 else date_debut_historique
+  jusqua <- Sys.Date() - delai_archive
+
+  if (depuis > jusqua) {
+    return(list(donnees = deja, erreur = NA_character_))   # déjà à jour
+  }
+
+  res <- recupere_historique_ville(v, depuis, jusqua)
+  if (is.na(res$erreur)) {
+    res$donnees <- bind_rows(deja, res$donnees)
+  } else if (nrow(deja) > 0) {
+    # Échec du delta : on garde l'historique déjà connu (dégradé, pas vide)
+    # plutôt que de tout perdre pour cette ville.
+    res$donnees <- deja
+  }
+  res
+}
+
+res_hist <- villes |> split(seq_len(nrow(villes))) |> map(recupere_historique_incremental)
+historique   <- map_dfr(res_hist, "donnees")
+erreurs_hist <- map_chr(res_hist, "erreur")
+saveRDS(historique, fichier_historique)
+
+# ---- 2. Prévisions : cache quotidien local --------------------------------------
 if (cache_frais) {
-  cache          <- readRDS(fichier_cache)
-  previsions     <- cache$previsions
-  actuel         <- cache$actuel
-  historique     <- cache$historique
-  villes_echouees <- cache$villes_echouees
-  telecharge_le  <- cache$telecharge_le
+  cache        <- readRDS(fichier_cache)
+  previsions   <- cache$previsions
+  actuel       <- cache$actuel
+  erreurs_prev <- cache$erreurs_prev
+  telecharge_le <- cache$telecharge_le
 } else {
   telecharge_le <- Sys.time()
 
   res_prev <- villes |> split(seq_len(nrow(villes))) |> map(recupere_previsions_ville)
-  res_hist <- villes |> split(seq_len(nrow(villes))) |> map(recupere_historique_ville)
-
-  previsions <- map_dfr(res_prev, "quotidien")
-  actuel     <- map_dfr(res_prev, "actuel")
-  historique <- map_dfr(res_hist, "donnees")
-
+  previsions   <- map_dfr(res_prev, "quotidien")
+  actuel       <- map_dfr(res_prev, "actuel")
   erreurs_prev <- map_chr(res_prev, "erreur")
-  erreurs_hist <- map_chr(res_hist, "erreur")
-  en_echec <- !is.na(erreurs_prev) | !is.na(erreurs_hist)
-  villes_echouees <- villes$ville[en_echec]
-  # Détail (ville : raison) pour le journal de la CI — ne fait pas partie de
-  # note_echecs (affiché dans le dashboard, qui reste concis pour l'utilisateur).
-  detail_echecs <- paste0(
-    villes$ville[en_echec], " : ",
-    coalesce(erreurs_prev[en_echec], erreurs_hist[en_echec])
-  )
 
-  echec_total <- nrow(previsions) == 0 && nrow(historique) == 0
-
-  if (echec_total && file.exists(fichier_cache)) {
-    warning("Téléchargement Open-Meteo impossible — cache du ",
+  if (nrow(previsions) == 0 && file.exists(fichier_cache)) {
+    warning("Téléchargement des prévisions Open-Meteo impossible — cache du ",
             format(file.mtime(fichier_cache), "%d/%m/%Y"), " utilisé.")
-    cache          <- readRDS(fichier_cache)
-    previsions     <- cache$previsions
-    actuel         <- cache$actuel
-    historique     <- cache$historique
-    villes_echouees <- cache$villes_echouees
-    telecharge_le  <- cache$telecharge_le
-  } else if (echec_total) {
-    stop("Impossible de récupérer les données Open-Meteo et aucun cache disponible.")
+    cache        <- readRDS(fichier_cache)
+    previsions   <- cache$previsions
+    actuel       <- cache$actuel
+    erreurs_prev <- cache$erreurs_prev
+    telecharge_le <- cache$telecharge_le
+  } else if (nrow(previsions) == 0) {
+    stop("Impossible de récupérer les prévisions Open-Meteo et aucun cache disponible.")
   } else {
-    if (length(villes_echouees) > 0) {
-      warning("Données indisponibles pour :\n", paste(detail_echecs, collapse = "\n"))
-    }
     saveRDS(
-      list(previsions = previsions, actuel = actuel, historique = historique,
-           villes_echouees = villes_echouees, telecharge_le = telecharge_le),
+      list(previsions = previsions, actuel = actuel, erreurs_prev = erreurs_prev,
+           telecharge_le = telecharge_le),
       fichier_cache
     )
   }
+}
+
+en_echec <- !is.na(erreurs_prev) | !is.na(erreurs_hist)
+villes_echouees <- villes$ville[en_echec]
+# Détail (ville : raison) pour le journal de la CI — ne fait pas partie de
+# note_echecs (affiché dans le dashboard, qui reste concis pour l'utilisateur).
+detail_echecs <- paste0(
+  villes$ville[en_echec], " : ",
+  coalesce(erreurs_prev[en_echec], erreurs_hist[en_echec])
+)
+if (length(villes_echouees) > 0) {
+  warning("Données indisponibles pour :\n", paste(detail_echecs, collapse = "\n"))
 }
 
 info_donnees <- paste0(

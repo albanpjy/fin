@@ -62,6 +62,25 @@ jobs:
       - name: Rendre le dashboard météo
         run: quarto render
 
+      # historique.rds est un cache persistant et incrémental (voir
+      # R/pipeline_meteo.R) : chaque rendu ne télécharge que les jours
+      # manquants depuis la dernière fois, au lieu de retélécharger les 86 ans
+      # de réanalyses à chaque fois (ce qui sature vite l'API gratuite). Il
+      # faut donc le committer pour que le rendu suivant reparte de là où
+      # celui-ci s'est arrêté. « [skip ci] » évite de redéclencher ce
+      # workflow en boucle (le push cible meteo/**).
+      - name: Committer l'historique météo mis à jour
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add historique.rds
+          if git diff --staged --quiet; then
+            echo "historique.rds inchangé — rien à committer."
+          else
+            git commit -m "Mise à jour de l'historique météo [skip ci]"
+            git push
+          fi
+
       - name: Déployer sur la branche gh-pages (sous-dossier meteo/)
         uses: peaceiris/actions-gh-pages@v4
         with:
