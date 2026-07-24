@@ -143,10 +143,17 @@ cache_frais <- file.exists(fichier_cache) &&
 # Chaque appel est protégé par tryCatch : une ville en échec (API injoignable,
 # coordonnées invalides…) est écartée avec un avertissement plutôt que de
 # faire planter le rendu pour les quatre autres.
-
+#
+# req_retry() : réessaie automatiquement (avec backoff) en cas de réponse
+# transitoire (429 = trop de requêtes, 5xx = erreur serveur) — observé en
+# pratique sur Open-Meteo lors de deux rendus rapprochés (chaque rendu
+# télécharge l'historique complet pour 5 villes). req_throttle() espace en
+# plus les requêtes d'un même rendu pour ne pas déclencher la limite.
 recupere_previsions_ville <- function(v) {
   tryCatch({
     resp <- request(url_previsions) |>
+      req_throttle(rate = 1 / 2, realm = "open-meteo") |>
+      req_retry(max_tries = 5, is_transient = \(resp) resp_status(resp) %in% c(429, 500, 502, 503, 504)) |>
       req_url_query(
         latitude   = v$latitude,
         longitude  = v$longitude,
@@ -212,6 +219,8 @@ recupere_previsions_ville <- function(v) {
 recupere_historique_ville <- function(v) {
   tryCatch({
     resp <- request(url_historique) |>
+      req_throttle(rate = 1 / 2, realm = "open-meteo") |>
+      req_retry(max_tries = 5, is_transient = \(resp) resp_status(resp) %in% c(429, 500, 502, 503, 504)) |>
       req_url_query(
         latitude   = v$latitude,
         longitude  = v$longitude,
@@ -256,7 +265,14 @@ if (cache_frais) {
 
   erreurs_prev <- map_chr(res_prev, "erreur")
   erreurs_hist <- map_chr(res_hist, "erreur")
-  villes_echouees <- villes$ville[!is.na(erreurs_prev) | !is.na(erreurs_hist)]
+  en_echec <- !is.na(erreurs_prev) | !is.na(erreurs_hist)
+  villes_echouees <- villes$ville[en_echec]
+  # Détail (ville : raison) pour le journal de la CI — ne fait pas partie de
+  # note_echecs (affiché dans le dashboard, qui reste concis pour l'utilisateur).
+  detail_echecs <- paste0(
+    villes$ville[en_echec], " : ",
+    coalesce(erreurs_prev[en_echec], erreurs_hist[en_echec])
+  )
 
   echec_total <- nrow(previsions) == 0 && nrow(historique) == 0
 
@@ -273,7 +289,7 @@ if (cache_frais) {
     stop("Impossible de récupérer les données Open-Meteo et aucun cache disponible.")
   } else {
     if (length(villes_echouees) > 0) {
-      warning("Données indisponibles pour : ", paste(villes_echouees, collapse = ", "))
+      warning("Données indisponibles pour :\n", paste(detail_echecs, collapse = "\n"))
     }
     saveRDS(
       list(previsions = previsions, actuel = actuel, historique = historique,
