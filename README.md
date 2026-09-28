@@ -46,13 +46,17 @@ sont référencés sur Yahoo Finance par leur ISIN suffixé `.PA`, ex.
 
 ## 📑 Les onglets
 
-- **📊 Vue d'ensemble** — valorisation, allocation, évolution, détail des positions
+- **📊 Vue d'ensemble** — valorisation, variation de la dernière séance,
+  allocation, évolution (avec le montant investi en repère), détail des
+  positions exportable en CSV / Excel
 - **📚 Théorie** — le MEDAF (CAPM) avec formules et exemples, les ratios
   (volatilité, Sharpe, Sortino, drawdown, VaR/CVaR, alpha/bêta) et la frontière
   efficiente de Markowitz
-- **📈 Performance** — base 100 vs CAC 40 et MSCI World, rendements mensuels,
-  contribution de chaque ligne
-- **⚠️ Risque** — indicateurs (vol, Sharpe, Sortino, VaR, drawdown), corrélations,
+- **📈 Performance** — base 100 vs CAC 40 et MSCI World, tableau de
+  performance par période (1, 3, 6 mois, depuis janvier, depuis le début),
+  rendements mensuels, contribution de chaque ligne, meilleure et moins bonne ligne
+- **⚠️ Risque** — indicateurs (vol, Sharpe, Sortino, VaR, drawdown, bêta),
+  distribution des rendements quotidiens avec VaR/CVaR, corrélations,
   MEDAF appliqué ligne par ligne (bêta/alpha vs CAC 40), frontière efficiente
   simulée (4 000 portefeuilles Monte Carlo) avec votre allocation positionnée
 - **🛡️ Couverture** — les options comme assurance de portefeuille : put
@@ -127,6 +131,7 @@ dizaine de lignes — un avertissement s'affiche au rendu si vous dépassez.
 ├── _quarto.yml                    # configuration Quarto (sortie dans docs/)
 ├── R/pipeline.R                   # LE pipeline de calculs, partagé HTML/PDF
 ├── index.qmd                      # le dashboard HTML (5 onglets, plotly)
+├── custom.scss                    # la charte visuelle du dashboard
 ├── rapport.qmd                    # le rapport PDF quotidien (LaTeX, ggplot2)
 ├── portfolio.csv                  # les positions du portefeuille
 ├── exports/                       # archives PDF horodatées (1 / jour de bourse)
@@ -149,6 +154,10 @@ cache disponible est utilisé avec un avertissement.
 - [x] **v3 — Publication automatique** : GitHub Action quotidienne (18 h UTC,
   lun.-ven.) qui re-génère le dashboard après la clôture et le publie sur
   GitHub Pages, avec cache local des cours en bonus
+
+💡 Les séries temporelles (évolution, base 100, drawdown) ont des boutons de
+période **1M · 3M · 6M · YTD · Tout** ; chaque carte peut s'agrandir en plein
+écran (icône en bas à droite au survol).
 
 ## ⚠️ Avertissements
 

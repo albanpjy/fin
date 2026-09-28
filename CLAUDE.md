@@ -80,8 +80,18 @@ Deux documents Quarto partagent un même pipeline de calculs :
   commentées 1 à 11), chargée par `source(..., encoding = "UTF-8")` depuis les
   deux qmd. Toute évolution de calcul se fait ici, jamais en double ;
 - **`index.qmd`** — le dashboard HTML (format `dashboard`, orientation `rows`,
-  plotly/DT) ; son setup ne contient que les échelles plotly (`scale_seq`,
-  `scale_div`, `ligne_v`) ;
+  plotly/DT, toutes les pages en `scrolling="true"` avec hauteurs de lignes en
+  px, `height="auto"` pour les lignes de texte) ; son setup ne contient que la
+  présentation : échelles plotly (`scale_seq`, `scale_div`, `ligne_v`),
+  `habillage()` (police, format français `separators = ", "`, locale `fr`,
+  barre d'outils allégée — à appliquer en fin de chaîne de CHAQUE graphique
+  plotly), `selecteur_periode` (boutons 1M/3M/6M/YTD/Tout des séries
+  temporelles), `pal_secteurs`, `dt_fr` (textes DT en français, sans fichier
+  distant) et `style_signe()` (vert/rouge dans les tableaux) ;
+- **`custom.scss`** — la charte visuelle, posée sur cosmo (`theme: [cosmo,
+  custom.scss]`) : navigation bleu nuit, cartes blanches, valueboxes blanches
+  à liseré coloré (via les variables Quarto `$valuebox-bg-*`, les classes
+  `.bg-*` seules ne suffisent pas) avec icône en petit dans le coin ;
 - **`rapport.qmd`** — le rapport PDF quotidien : LaTeX KOMA (`scrartcl`,
   `DIV=11`, microtype), `lang: fr` (typographie française), graphiques
   **ggplot2** statiques (dev `cairo_pdf` pour l'UTF-8), tableaux
@@ -148,6 +158,12 @@ chunks d'affichage :
 Constante clé : `taux_sans_risque` (3 %) en tête du setup — utilisée par Sharpe,
 Sortino, MEDAF et la frontière.
 
+Objets ajoutés pour le dashboard : `var_jour_eur` / `var_jour_pct` (dernière
+séance, section 5) et `perf_periodes` (1/3/6 mois, YTD, depuis le début pour
+portefeuille, CAC 40 et CW8, section 11). Les objets `b100`, `mensuel`,
+`contrib`, `corr` du pipeline sont utilisés tels quels par index.qmd (plus de
+recalcul en double).
+
 Conventions d'affichage : helpers `eur()` / `pct()` / `num()` pour le format
 français (espace des milliers, virgule décimale) ; graphiques en `plotly`,
 tableaux en `DT`. Palette (guide dataviz interne) : séries catégorielles dans
@@ -156,11 +172,20 @@ l'ordre fixe `#2a78d6` (bleu), `#1baf7a` (aqua), `#eda100` (jaune) ; négatif/pe
 séquentiel (frontière) rampe bleue `#cde2fb`→`#104281`. Réutiliser les variables
 `col_*` / `scale_*` du setup plutôt que des hex en dur.
 
-Dans le format dashboard de Quarto, chaque titre `# Niveau 1` est un onglet/page ;
+Dans le format dashboard de Quarto, chaque titre `# Niveau 1` est un onglet/page
+(titres sans emoji, pour un rendu plus sobre) ;
 les pages riches en texte (Théorie, Couverture) utilisent `{scrolling="true"}` et
 des cartes markdown `::: {.card title="…"}` avec formules LaTeX (`$$…$$`).
 Attention : pas de `#| title: !expr` (fragile) — pour un titre dynamique de
 valuebox, passer `title` dans la liste retournée par le chunk.
+
+Vérification visuelle sans réseau : R (`r-cran-tidyverse`, `r-cran-plotly`,
+`r-cran-dt`, `r-cran-rmarkdown` via apt) + le .deb Quarto de GitHub suffisent
+pour `quarto render index.qmd`, avec un faux package `tidyquant` (juste
+`tq_get` qui échoue) et un `cache_cours.rds` du jour rempli de cours simulés ;
+lancer avec `LANG=C.UTF-8` sinon `source()` du pipeline échoue sur les
+accents. Captures via Playwright (MathJax et Google Fonts ne chargent pas
+hors ligne, c'est normal).
 
 Vérification sans réseau : en plus du parse-check, un smoke-test du pipeline
 complet sur cours simulés est possible avec le seul package `tidyverse`

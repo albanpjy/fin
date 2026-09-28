@@ -357,6 +357,12 @@ valeur_debut_annee <- valeur_quotidienne |>
 
 perf_ytd <- last(arrange(valeur_quotidienne, date)$valeur) / valeur_debut_annee - 1
 
+# Variation de la dernière séance : c'est le chiffre qu'on regarde en
+# premier le soir. On compare simplement les deux dernières valeurs connues.
+deux_dernieres <- valeur_quotidienne |> arrange(date) |> slice_tail(n = 2)
+var_jour_eur   <- diff(deux_dernieres$valeur)
+var_jour_pct   <- var_jour_eur / first(deux_dernieres$valeur)
+
 # ==============================================================================
 # 6. BENCHMARK (CAC 40) ET RENDEMENTS QUOTIDIENS
 # ==============================================================================
@@ -550,6 +556,41 @@ mensuel <- valeur_quotidienne |>
 
 # Contribution de chaque ligne : la +/- value en euros, triée.
 contrib <- positions |> arrange(pnl)
+
+# Performance par période (1, 3, 6 mois, depuis janvier, depuis le début)
+# pour le portefeuille et ses deux points de comparaison. On part des
+# séries base 100 : la performance entre deux dates est le rapport des deux
+# niveaux. Si la date de départ tombe un jour sans cotation, on prend la
+# séance précédente. Une période plus longue que l'historique donne NA.
+perf_depuis <- function(dates, niveaux, depart) {
+  avant <- which(dates <= depart)
+  if (length(avant) == 0) return(NA_real_)
+  last(niveaux) / niveaux[max(avant)] - 1
+}
+
+derniere_date <- max(b100$date)
+periodes <- tibble(
+  periode = c("1 mois", "3 mois", "6 mois", "Depuis le 1er janvier", "Depuis le début"),
+  depart  = c(
+    derniere_date %m-% months(1),
+    derniere_date %m-% months(3),
+    derniere_date %m-% months(6),
+    # même convention que perf_ytd : première séance de l'année
+    min(b100$date[year(b100$date) == year(derniere_date)]),
+    min(b100$date)
+  )
+)
+
+perf_periodes <- b100 |>
+  arrange(date) |>
+  group_by(serie) |>
+  reframe(
+    periode = periodes$periode,
+    perf    = map_dbl(periodes$depart, \(d) perf_depuis(date, indice, d))
+  ) |>
+  pivot_wider(names_from = serie, values_from = perf) |>
+  mutate(periode = factor(periode, levels = periodes$periode)) |>
+  arrange(periode)
 
 # Matrice des corrélations des rendements quotidiens entre les lignes.
 corr <- cor(mat_r)

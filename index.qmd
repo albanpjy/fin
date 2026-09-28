@@ -3,7 +3,9 @@ title: "Portfolio Tracker"
 author: "Alban VIDELOUP"
 format:
   dashboard:
-    theme: cosmo
+    # cosmo sert de base ; custom.scss apporte la charte (fond gris clair,
+    # cartes blanches, navigation bleu nuit, valueboxes sobres).
+    theme: [cosmo, custom.scss]
     orientation: rows
     nav-buttons:
       - icon: file-earmark-pdf
@@ -26,7 +28,8 @@ format:
 # frontière efficiente, payoffs d'options…) vit dans R/pipeline.R, qui est
 # PARTAGÉ avec le rapport PDF (rapport.qmd) : une évolution faite là-bas
 # profite aux deux documents. Ce chunk ne garde que ce qui est propre au
-# dashboard interactif : les librairies d'affichage et les échelles plotly.
+# dashboard interactif : les librairies d'affichage, les échelles plotly
+# et quelques réglages de présentation communs à tous les graphiques.
 # ============================================================================
 
 library(plotly)   # graphiques interactifs (zoom, survol…)
@@ -47,19 +50,95 @@ ligne_v <- list(list(
   type = "line", x0 = 1, x1 = 1, y0 = 0, y1 = 1, yref = "paper",
   line = list(color = "#c3c2b7", dash = "dot", width = 1)
 ))
+
+# ---- Habillage commun des graphiques plotly ---------------------------------
+# Un seul endroit pour la typographie, les grilles et le format français des
+# nombres, plutôt que de le répéter dans chaque chunk. `separators = ", "`
+# donne la virgule décimale et l'espace des milliers (250 000 €, 4,2 %) ;
+# la locale « fr » traduit les mois des axes et les infobulles de la barre
+# d'outils. On retire au passage les boutons plotly qui ne servent à rien ici.
+col_grille <- "#edf0f4"
+col_texte  <- "#52606d"
+
+habillage <- function(p, legende = FALSE) {
+  p |>
+    layout(
+      font = list(family = "Inter, system-ui, sans-serif", size = 12, color = col_texte),
+      separators = ", ",
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor  = "rgba(0,0,0,0)",
+      margin = list(l = 8, r = 8, t = 8, b = 8),
+      hoverlabel = list(
+        bgcolor = "#ffffff", bordercolor = "#d5dce4",
+        font = list(family = "Inter, system-ui, sans-serif", color = "#1f2a37")
+      ),
+      xaxis = list(gridcolor = col_grille, zerolinecolor = "#d5dce4", linecolor = "#d5dce4"),
+      yaxis = list(gridcolor = col_grille, zerolinecolor = "#d5dce4"),
+      showlegend = legende,
+      legend = list(orientation = "h", x = 0, y = 1.02, yanchor = "bottom",
+                    font = list(size = 11))
+    ) |>
+    config(
+      locale = "fr",
+      displaylogo = FALSE,
+      modeBarButtonsToRemove = c("lasso2d", "select2d", "autoScale2d",
+                                 "zoomIn2d", "zoomOut2d")
+    )
+}
+
+# Boutons de période (1 mois, 3 mois…) posés au-dessus des séries
+# temporelles : plus pratique que de zoomer à la souris.
+selecteur_periode <- list(
+  buttons = list(
+    list(count = 1, label = "1M",  step = "month", stepmode = "backward"),
+    list(count = 3, label = "3M",  step = "month", stepmode = "backward"),
+    list(count = 6, label = "6M",  step = "month", stepmode = "backward"),
+    list(count = 1, label = "YTD", step = "year",  stepmode = "todate"),
+    list(step = "all", label = "Tout")
+  ),
+  x = 0, y = 1.02, yanchor = "bottom",
+  bgcolor = "#f3f5f8", activecolor = "#dbe7f7",
+  font = list(size = 11)
+)
+
+# Couleurs des secteurs dans le treemap : les trois couleurs de la charte
+# en tête, complétées par des teintes sourdes pour rester lisible.
+pal_secteurs <- c(col_s1, col_s2, col_s3, "#6b5bd2", "#3fa7c9",
+                  "#d4577b", "#8a9a5b", "#c8742f", "#7c8595", "#4c6a92")
+
+# Textes de l'interface DT en français (sans aller chercher de fichier de
+# langue sur internet, ce qui échouerait hors ligne).
+dt_fr <- list(
+  search = "Rechercher :",
+  info = "Lignes _START_ à _END_ sur _TOTAL_",
+  infoEmpty = "Aucune ligne",
+  zeroRecords = "Aucun résultat",
+  paginate = list(previous = "Précédent", `next` = "Suivant"),
+  buttons = list(copy = "Copier", copyTitle = "Copié dans le presse-papiers",
+                 copySuccess = list(`_` = "%d lignes copiées", `1` = "1 ligne copiée"))
+)
+
+# Vert pour un gain, rouge pour une perte : réutilisé dans les tableaux.
+style_signe <- function(tbl, colonnes) {
+  formatStyle(
+    tbl, colonnes,
+    color = styleInterval(0, c(col_neg, "#17855f")),
+    fontWeight = "600"
+  )
+}
 ```
 
-# 📊 Vue d'ensemble
+# Vue d'ensemble {scrolling="true"}
 
-## Row {height="8%"}
+## Row {height="auto"}
 
-::: {.card}
+::: {.card .bandeau}
 `r info_donnees`
 
 `r if (nzchar(note_manuelles)) paste0("ℹ️ ", note_manuelles)`
 :::
 
-## Row {height="20%"}
+## Row {height="112px"}
 
 ```{r}
 #| content: valuebox
@@ -86,6 +165,19 @@ list(
 
 ```{r}
 #| content: valuebox
+# Variation entre les deux dernières clôtures, avec la date dans le titre
+# pour qu'on sache tout de suite de quelle séance on parle.
+list(
+  title = paste0("Dernière séance (", format(max(valeur_quotidienne$date), "%d/%m"), ")"),
+  icon  = if (var_jour_eur >= 0) "arrow-up-right" else "arrow-down-right",
+  color = if (var_jour_eur >= 0) "success" else "danger",
+  value = paste0(if (var_jour_eur >= 0) "+" else "", eur(var_jour_eur),
+                 " (", pct(var_jour_pct), ")")
+)
+```
+
+```{r}
+#| content: valuebox
 #| title: "Performance depuis le 1er janvier"
 list(
   icon  = "calendar3",
@@ -104,103 +196,149 @@ list(
   icon  = "list-ul",
   color = if (n_exclues == 0) "light" else "warning",
   value = if (n_exclues == 0) {
-    nrow(positions)
+    paste0(nrow(positions), " / ", n_lignes_csv)
   } else {
     paste0(nrow(positions), " / ", n_lignes_csv, " (données manquantes)")
   }
 )
 ```
 
-## Row {height="40%"}
-
-```{r}
-#| title: "Répartition par secteur"
-# Treemap à deux niveaux : les secteurs (rectangles parents), puis chaque
-# position à l'intérieur de son secteur. La surface est proportionnelle
-# à la valeur en euros.
-alloc_secteur <- positions |>
-  group_by(secteur) |>
-  summarise(valeur = sum(valeur), .groups = "drop")
-
-plot_ly(
-  type   = "treemap",
-  ids    = c(alloc_secteur$secteur, positions$ticker),
-  labels = c(alloc_secteur$secteur, positions$nom),
-  parents = c(rep("", nrow(alloc_secteur)), positions$secteur),
-  values = c(alloc_secteur$valeur, positions$valeur),
-  branchvalues = "total",
-  texttemplate = "%{label}<br>%{value:,.0f} €",
-  hovertemplate = "%{label}<br>%{value:,.0f} € (%{percentRoot:.1%})<extra></extra>"
-)
-```
+## Row {height="400px"}
 
 ```{r}
 #| title: "Évolution de la valeur du portefeuille"
-# La série quotidienne calculée en section 5 du setup, depuis la date
-# du dernier achat (portefeuille complet).
-plot_ly(
-  valeur_quotidienne,
-  x = ~date, y = ~valeur,
-  type = "scatter", mode = "lines",
-  line = list(color = col_s1, width = 2),
-  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:,.0f} €<extra></extra>"
-) |>
+# La série quotidienne du pipeline (section 5), depuis la date du dernier
+# achat. La ligne pointillée rappelle le montant investi : l'écart entre
+# les deux courbes, c'est la plus-value latente.
+plot_ly(valeur_quotidienne, x = ~date) |>
+  add_lines(
+    y = ~valeur, name = "Valeur",
+    line = list(color = col_s1, width = 2),
+    fill = "tozeroy", fillcolor = "rgba(42, 120, 214, 0.07)",
+    hovertemplate = "%{x|%d/%m/%Y}<br><b>%{y:,.0f} €</b><extra></extra>"
+  ) |>
+  add_lines(
+    y = total_investi, name = "Montant investi",
+    line = list(color = col_muted, width = 1.5, dash = "dot"),
+    hovertemplate = "Investi : %{y:,.0f} €<extra></extra>"
+  ) |>
   layout(
-    xaxis = list(title = ""),
-    yaxis = list(title = "", tickformat = ",.0f", ticksuffix = " €")
-  )
+    xaxis = list(title = "", rangeselector = selecteur_periode),
+    # On ne part pas de zéro : sur un portefeuille de ce type, les
+    # variations se jouent sur quelques pour cent.
+    yaxis = list(title = "", tickformat = ",.0f", ticksuffix = " €",
+                 range = range(c(valeur_quotidienne$valeur, total_investi)) * c(0.97, 1.02)),
+    hovermode = "x unified"
+  ) |>
+  habillage(legende = TRUE) |>
+  layout(legend = list(x = 1, xanchor = "right"))
 ```
 
-## Row {height="40%"}
+## Row {height="380px"}
 
-### Column {width="30%"}
+```{r}
+#| title: "Répartition par secteur"
+#| width: 60%
+# Treemap à deux niveaux : les secteurs (rectangles parents), puis chaque
+# position à l'intérieur de son secteur. La surface est proportionnelle
+# à la valeur en euros ; chaque ligne prend la couleur de son secteur.
+alloc_secteur <- positions |>
+  group_by(secteur) |>
+  summarise(valeur = sum(valeur), .groups = "drop") |>
+  arrange(desc(valeur)) |>
+  mutate(couleur = rep_len(pal_secteurs, n()))
+
+couleur_ligne <- alloc_secteur$couleur[match(positions$secteur, alloc_secteur$secteur)]
+
+plot_ly(
+  type    = "treemap",
+  ids     = c(alloc_secteur$secteur, positions$ticker),
+  labels  = c(alloc_secteur$secteur, positions$nom),
+  parents = c(rep("", nrow(alloc_secteur)), positions$secteur),
+  values  = c(alloc_secteur$valeur, positions$valeur),
+  branchvalues = "total",
+  marker  = list(colors = c(alloc_secteur$couleur, couleur_ligne),
+                 line = list(color = "#ffffff", width = 2)),
+  tiling  = list(pad = 3),
+  textfont = list(color = "#ffffff", size = 13),
+  texttemplate  = "<b>%{label}</b><br>%{percentRoot:.1%}",
+  hovertemplate = "<b>%{label}</b><br>%{value:,.0f} € · %{percentRoot:.1%} du portefeuille<extra></extra>",
+  pathbar = list(visible = FALSE)
+) |>
+  habillage()
+```
 
 ```{r}
 #| title: "Répartition par type d'actif"
-# Donut de la répartition Action / ETF / OPCVM (colonne `type` du CSV).
-# Les couleurs suivent l'ordre alphabétique des types (ordre de group_by).
+#| width: 40%
+# Donut de la répartition Action / ETF / OPCVM (colonne `type` du CSV),
+# avec la valeur totale au centre.
 positions |>
   group_by(type) |>
   summarise(valeur = sum(valeur), .groups = "drop") |>
   plot_ly(
     labels = ~type, values = ~valeur,
-    type = "pie", hole = 0.55,
-    marker = list(colors = c(col_s1, col_s2, col_s3)),
-    textinfo = "label+percent",
-    hovertemplate = "%{label}<br>%{value:,.0f} €<extra></extra>"
+    type = "pie", hole = 0.62, sort = FALSE,
+    marker = list(colors = c(col_s1, col_s2, col_s3),
+                  line = list(color = "#ffffff", width = 2)),
+    # étiquettes dans les parts : à l'extérieur, elles sortaient du cadre sur mobile
+    textinfo = "label+percent", textposition = "inside",
+    insidetextorientation = "horizontal", textfont = list(color = "#ffffff", size = 12),
+    hovertemplate = "%{label}<br>%{value:,.0f} € (%{percent})<extra></extra>"
   ) |>
-  layout(showlegend = FALSE)
+  layout(
+    annotations = list(list(
+      text = paste0("<span style='font-size:11px;color:#66788a'>TOTAL</span><br><b>",
+                    eur(total_valeur), "</b>"),
+      showarrow = FALSE, x = 0.5, y = 0.5, font = list(size = 15, color = "#1f2a37")
+    )),
+    margin = list(t = 30, b = 30)
+  ) |>
+  habillage()
 ```
 
-### Column {width="70%"}
+## Row {height="520px"}
 
 ```{r}
 #| title: "Détail des positions"
-# Tableau interactif : tri par clic sur les en-têtes. Les formats monétaires
-# et pourcentages sont appliqués par DT (formatCurrency / formatPercentage).
+# Tableau interactif : tri par clic sur les en-têtes, recherche, et export
+# CSV / Excel pour retravailler les chiffres ailleurs. Les quantités passent
+# par qte() pour éviter les « 2261.52 » à l'anglaise.
 positions |>
   arrange(desc(valeur)) |>
-  select(
-    Nom = nom, Ticker = ticker, Type = type,
-    `Quantité` = quantite, PMU = pmu, Cours = cours,
-    Valeur = valeur, `+/- value` = pnl,
+  transmute(
+    Nom = nom, Ticker = ticker, Type = type, Secteur = secteur,
+    `Quantité` = qte(quantite), PMU = pmu, Cours = cours,
+    Investi = investi, Valeur = valeur, `+/- value` = pnl,
     `+/- value (%)` = pnl_pct, Poids = poids
   ) |>
   datatable(
     rownames = FALSE,
-    options = list(pageLength = 15, dom = "tip"),
-    class = "compact stripe hover"
+    extensions = "Buttons",
+    options = list(
+      dom = "Bfrtip", pageLength = 15, language = dt_fr,
+      scrollX = TRUE,   # défilement horizontal plutôt que débordement sur mobile
+      buttons = list(
+        list(extend = "copy"),
+        list(extend = "csv",   text = "CSV",   filename = "positions"),
+        list(extend = "excel", text = "Excel", filename = "positions")
+      ),
+      columnDefs = list(list(className = "dt-right", targets = 4))
+    ),
+    class = "compact hover"
   ) |>
   formatCurrency(
-    c("PMU", "Cours", "Valeur", "+/- value"),
+    c("PMU", "Cours", "Investi", "Valeur", "+/- value"),
     currency = " €", before = FALSE, mark = " ", dec.mark = ","
   ) |>
-  formatPercentage(c("+/- value (%)", "Poids"), digits = 1, dec.mark = ",")
+  formatPercentage(c("+/- value (%)", "Poids"), digits = 1, dec.mark = ",") |>
+  style_signe(c("+/- value", "+/- value (%)")) |>
+  formatStyle("Nom", fontWeight = "600")
 ```
 
-# 📚 Théorie {scrolling="true"}
+# Théorie {scrolling="true"}
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="Le MEDAF — Modèle d'Évaluation Des Actifs Financiers (CAPM)"}
 
@@ -235,13 +373,13 @@ $$\alpha_i = R_i^{\text{réalisé}} - \left[ R_f + \beta_i (R_m - R_f) \right]$$
 **Limites** : le MEDAF suppose des marchés efficients, un seul facteur de risque
 et des rendements gaussiens. Les modèles multi-facteurs (Fama-French) l'affinent,
 mais le bêta reste l'outil de base pour dimensionner une couverture — on s'en
-sert dans l'onglet 🛡️ Couverture.
+sert dans l'onglet *Couverture*.
 
-*→ L'onglet ⚠️ Risque calcule le bêta et l'alpha réels de chacune de vos lignes cotées.*
+*→ L'onglet Risque calcule le bêta et l'alpha réels de chacune de vos lignes cotées.*
 
 :::
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="Les ratios et mesures de risque"}
 
@@ -278,7 +416,7 @@ au marché, $\alpha$ la sur/sous-performance ajustée du risque.
 
 :::
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="La frontière efficiente (Markowitz, 1952)"}
 
@@ -310,14 +448,14 @@ la matrice de covariance $\Sigma$ estimés sur l'historique — avec prudence : 
 estimations sont instables, et la frontière « optimale » d'hier ne l'est plus
 forcément demain.
 
-*→ L'onglet ⚠️ Risque simule 4 000 portefeuilles à partir de vos lignes cotées
+*→ L'onglet Risque simule 4 000 portefeuilles à partir de vos lignes cotées
 et positionne votre allocation actuelle par rapport à la frontière.*
 
 :::
 
-# 📈 Performance
+# Performance {scrolling="true"}
 
-## Row {height="20%"}
+## Row {height="112px"}
 
 ```{r}
 #| content: valuebox
@@ -357,96 +495,113 @@ list(
 
 ```{r}
 #| content: valuebox
-#| title: "Meilleure ligne"
-meilleure <- positions |> slice_max(pnl_pct, n = 1)
+# Le nom de la ligne va dans la valeur, sa performance dans le titre :
+# un nom long (« Atout Vert Horizon ») tient ainsi sans déborder.
+meilleure <- positions |> slice_max(pnl_pct, n = 1, with_ties = FALSE)
 list(
+  title = paste0("Meilleure ligne · ", pct(meilleure$pnl_pct)),
   icon  = "trophy",
   color = "light",
-  value = paste0(meilleure$nom, " (", pct(meilleure$pnl_pct), ")")
+  value = meilleure$nom
 )
 ```
 
-## Row {height="45%"}
+```{r}
+#| content: valuebox
+moins_bonne <- positions |> slice_min(pnl_pct, n = 1, with_ties = FALSE)
+list(
+  title = paste0("Moins bonne ligne · ", pct(moins_bonne$pnl_pct)),
+  icon  = "exclamation-circle",
+  color = if (moins_bonne$pnl_pct < 0) "danger" else "light",
+  value = moins_bonne$nom
+)
+```
+
+## Row {height="440px"}
 
 ```{r}
 #| title: "Base 100 : portefeuille vs CAC 40 vs Monde"
+#| width: 62%
 # « Base 100 » : chaque série est divisée par sa première valeur puis
 # multipliée par 100 — toutes partent donc de 100, ce qui rend comparables
 # des grandeurs de niveaux très différents (un portefeuille en €, un indice
 # en points). À la fin, 112 se lit « +12 % depuis le départ ».
-b100 <- bind_rows(
-  valeur_quotidienne |>
-    arrange(date) |>
-    transmute(date, serie = "Portefeuille", indice = valeur / first(valeur) * 100),
-  bench |>
-    filter(date >= date_debut) |>
-    arrange(date) |>
-    transmute(date, serie = "CAC 40", indice = close / first(close) * 100),
-  prices |>
-    filter(symbol == "CW8.PA", date >= date_debut) |>
-    arrange(date) |>
-    transmute(date, serie = "MSCI World (CW8)", indice = close / first(close) * 100)
-) |>
-  mutate(serie = factor(serie, levels = c("Portefeuille", "CAC 40", "MSCI World (CW8)")))
-
+# Les séries sont préparées une seule fois dans le pipeline (section 11).
 plot_ly(
   b100, x = ~date, y = ~indice, color = ~serie,
   colors = c("Portefeuille" = col_s1, "CAC 40" = col_s2, "MSCI World (CW8)" = col_s3),
   type = "scatter", mode = "lines", line = list(width = 2),
-  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:.1f}<extra>%{fullData.name}</extra>"
+  hovertemplate = "%{y:.1f}<extra>%{fullData.name}</extra>"
 ) |>
   layout(
-    xaxis = list(title = ""),
-    yaxis = list(title = "Base 100"),
-    legend = list(orientation = "h", x = 0, y = 1.08)
-  )
+    xaxis = list(title = "", rangeselector = selecteur_periode),
+    yaxis = list(title = ""),
+    hovermode = "x unified",
+    # repère horizontal à 100 : au-dessus on gagne, en dessous on perd
+    shapes = list(list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = 100, y1 = 100,
+                       line = list(color = "#c3c2b7", dash = "dot", width = 1)))
+  ) |>
+  habillage(legende = TRUE) |>
+  layout(legend = list(x = 1, xanchor = "right"))
 ```
 
-## Row {height="35%"}
+```{r}
+#| title: "Performance par période"
+#| width: 38%
+# Le même comparatif, mais en chiffres : utile pour voir d'un coup d'œil
+# si l'écart avec les indices est récent ou ancien. Calculé dans le pipeline.
+perf_periodes |>
+  rename(`Période` = periode, Monde = `MSCI World (CW8)`) |>
+  datatable(
+    rownames = FALSE,
+    options = list(dom = "t", ordering = FALSE, language = dt_fr),
+    class = "compact"
+  ) |>
+  formatPercentage(c("Portefeuille", "CAC 40", "Monde"), digits = 1, dec.mark = ",") |>
+  style_signe(c("Portefeuille", "CAC 40", "Monde")) |>
+  formatStyle("Période", fontWeight = "600")
+```
+
+## Row {height="380px"}
 
 ```{r}
 #| title: "Rendements mensuels du portefeuille"
-# Dernière valeur de chaque mois, puis variation d'un mois sur l'autre.
-# Barres bleues = mois positifs, rouges = mois négatifs.
-mensuel <- valeur_quotidienne |>
-  mutate(mois = floor_date(date, "month")) |>
-  group_by(mois) |>
-  summarise(fin = last(valeur), .groups = "drop") |>
-  mutate(r = fin / lag(fin) - 1) |>
-  drop_na()
-
+# Dernière valeur de chaque mois, puis variation d'un mois sur l'autre
+# (calculé dans le pipeline). Barres bleues = mois positifs, rouges = négatifs.
 plot_ly(
   mensuel, x = ~mois, y = ~r, type = "bar",
   marker = list(color = ifelse(mensuel$r >= 0, col_s1, col_neg)),
-  hovertemplate = "%{x|%m/%Y}<br>%{y:.1%}<extra></extra>"
+  hovertemplate = "%{x|%B %Y}<br><b>%{y:.1%}</b><extra></extra>"
 ) |>
   layout(
-    xaxis = list(title = ""),
-    yaxis = list(title = "", tickformat = ".0%")
-  )
+    xaxis = list(title = "", tickformat = "%b %y"),
+    yaxis = list(title = "", tickformat = ".0%"),
+    bargap = 0.35
+  ) |>
+  habillage()
 ```
 
 ```{r}
 #| title: "Contribution de chaque ligne (+/- value en €)"
 # Qui tire le portefeuille vers le haut, qui le plombe : la +/- value
-# en euros de chaque ligne, triée.
-contrib <- positions |> arrange(pnl)
-
+# en euros de chaque ligne, triée (objet `contrib` du pipeline).
 plot_ly(
   contrib, x = ~pnl, y = ~factor(nom, levels = contrib$nom),
   type = "bar", orientation = "h",
   marker = list(color = ifelse(contrib$pnl >= 0, col_s1, col_neg)),
-  hovertemplate = "%{y}<br>%{x:,.0f} €<extra></extra>"
+  hovertemplate = "%{y}<br><b>%{x:,.0f} €</b><extra></extra>"
 ) |>
   layout(
     xaxis = list(title = "", tickformat = ",.0f", ticksuffix = " €"),
-    yaxis = list(title = "")
-  )
+    yaxis = list(title = ""),
+    bargap = 0.3
+  ) |>
+  habillage()
 ```
 
-# ⚠️ Risque {scrolling="true"}
+# Risque {scrolling="true"}
 
-## Row {height="120px"}
+## Row {height="112px"}
 
 ```{r}
 #| content: valuebox
@@ -480,15 +635,25 @@ list(icon = "speedometer", color = "light", value = num(sortino))
 
 ```{r}
 #| content: valuebox
-#| title: "VaR 95 % (1 jour)"
+# Le pourcentage va dans le titre : avec six cartes sur la ligne, le
+# montant seul tient sans passer à la ligne.
 list(
+  title = paste0("VaR 95 % à 1 jour · ", pct(var95_pct)),
   icon  = "exclamation-triangle",
   color = "warning",
-  value = paste0(eur(var95_eur), " (", pct(var95_pct), ")")
+  value = eur(var95_eur)
 )
 ```
 
-## Row {height="380px"}
+```{r}
+#| content: valuebox
+#| title: "Bêta vs CAC 40"
+# Le bêta du portefeuille entier : sous 1, il amortit les mouvements du
+# marché ; au-dessus, il les amplifie. Sert aussi à l'onglet Couverture.
+list(icon = "sliders", color = "light", value = num(beta_pf))
+```
+
+## Row {height="400px"}
 
 ```{r}
 #| title: "Drawdown : baisse depuis le dernier sommet"
@@ -498,67 +663,89 @@ list(
 plot_ly(
   drawdowns, x = ~date, y = ~drawdown,
   type = "scatter", mode = "lines", fill = "tozeroy",
-  line = list(color = col_neg, width = 2),
-  fillcolor = "rgba(227, 73, 72, 0.15)",
-  hovertemplate = "%{x|%d/%m/%Y}<br>%{y:.1%}<extra></extra>"
+  line = list(color = col_neg, width = 1.5),
+  fillcolor = "rgba(227, 73, 72, 0.12)",
+  hovertemplate = "%{x|%d/%m/%Y}<br><b>%{y:.1%}</b><extra></extra>"
 ) |>
   layout(
-    xaxis = list(title = ""),
+    xaxis = list(title = "", rangeselector = selecteur_periode),
     yaxis = list(title = "", tickformat = ".0%")
-  )
+  ) |>
+  habillage()
 ```
+
+```{r}
+#| title: "Distribution des rendements quotidiens"
+# L'histogramme des rendements journaliers, avec les deux seuils de risque
+# de la valuebox : la VaR (5 % des jours font pire) et la CVaR (la perte
+# moyenne de ces mauvais jours). La queue gauche, c'est ce qui fait mal.
+seuil <- function(x, couleur) list(
+  type = "line", x0 = x, x1 = x, y0 = 0, y1 = 1, yref = "paper",
+  line = list(color = couleur, width = 1.5, dash = "dash")
+)
+etiquette <- function(x, y, texte, couleur) list(
+  x = x, y = y, yref = "paper", text = texte, showarrow = FALSE,
+  xanchor = "right", yanchor = "top", font = list(size = 11, color = couleur)
+)
+
+plot_ly(
+  r_pf, x = ~r, type = "histogram", nbinsx = 60,
+  marker = list(color = "rgba(42, 120, 214, 0.75)",
+                line = list(color = "#ffffff", width = 0.5)),
+  hovertemplate = "%{x}<br>%{y} jours<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = "Rendement quotidien", tickformat = ".1%"),
+    yaxis = list(title = "Nombre de jours"),
+    bargap = 0.05,
+    shapes = list(seuil(-var95_pct, col_s3), seuil(-cvar95_pct, col_neg)),
+    annotations = list(
+      etiquette(-var95_pct,  1.00, paste0("VaR 95 % ", pct(-var95_pct), " "), "#b7791f"),
+      etiquette(-cvar95_pct, 0.90, paste0("CVaR ", pct(-cvar95_pct), " "), col_neg)
+    )
+  ) |>
+  habillage()
+```
+
+## Row {height="460px"}
 
 ```{r}
 #| title: "Corrélations entre les lignes"
-# Matrice des corrélations des rendements quotidiens. Échelle divergente :
-# bleu = corrélation négative (diversifiant), gris = nulle, rouge = positive.
-# Deux lignes très « rouges » entre elles font double emploi.
-corr <- cor(mat_r)
+#| width: 45%
+# Matrice des corrélations des rendements quotidiens (objet `corr` du
+# pipeline). Échelle divergente : bleu = corrélation négative (diversifiant),
+# gris = nulle, rouge = positive. Deux lignes très « rouges » entre elles
+# font double emploi. Les axes affichent le ticker, plus court que le nom,
+# et chaque case porte sa valeur pour éviter de deviner à la couleur.
+tk_courts <- sub("\\.[A-Z]+$", "", colnames(corr))
+noms_hover <- matrix(
+  paste(rep(labs_actifs, times = length(labs_actifs)), "×",
+        rep(labs_actifs, each = length(labs_actifs))),
+  nrow = length(labs_actifs)
+)
 
 plot_ly(
-  x = labs_actifs, y = labs_actifs, z = round(corr, 2),
+  x = tk_courts, y = tk_courts, z = round(corr, 2),
   type = "heatmap", zmin = -1, zmax = 1,
   colorscale = scale_div,
-  hovertemplate = "%{y} × %{x}<br>ρ = %{z:.2f}<extra></extra>"
+  text = noms_hover,
+  texttemplate = "%{z:.2f}", textfont = list(size = 10),
+  hovertemplate = "%{text}<br>ρ = %{z:.2f}<extra></extra>",
+  xgap = 2, ygap = 2,
+  colorbar = list(thickness = 10, len = 0.8, outlinewidth = 0)
 ) |>
   layout(
-    xaxis = list(title = "", tickangle = -40),
-    yaxis = list(title = "")
-  )
-```
-
-## Row {height="auto"}
-
-```{r}
-#| title: "MEDAF appliqué : bêta et alpha de chaque ligne (marché : CAC 40, taux sans risque : paramètre du fichier)"
-# Le tableau du MEDAF calculé en section 8 du setup. Lecture :
-#  - Bêta > 1 : la ligne amplifie les mouvements du CAC 40 ;
-#  - Alpha > 0 : elle a fait MIEUX que ce que son bêta laissait espérer.
-medaf |>
-  select(
-    Ligne = nom, `Bêta` = beta,
-    `Rendement réalisé (ann.)` = ret_realise,
-    `Rendement MEDAF attendu` = ret_medaf,
-    `Alpha (ann.)` = alpha
+    xaxis = list(title = "", tickangle = -45, showgrid = FALSE),
+    yaxis = list(title = "", autorange = "reversed", showgrid = FALSE)
   ) |>
-  datatable(
-    rownames = FALSE,
-    options = list(dom = "t", pageLength = 15),
-    class = "compact stripe hover"
-  ) |>
-  formatRound("Bêta", digits = 2, dec.mark = ",") |>
-  formatPercentage(
-    c("Rendement réalisé (ann.)", "Rendement MEDAF attendu", "Alpha (ann.)"),
-    digits = 1, dec.mark = ","
-  )
+  habillage()
 ```
-
-## Row {height="480px"}
 
 ```{r}
 #| title: "Frontière efficiente : 4 000 portefeuilles simulés à partir de vos lignes cotées"
-# Chaque point gris-bleu est un portefeuille simulé (couleur = ratio de
-# Sharpe). L'enveloppe supérieure du nuage est la frontière efficiente.
+#| width: 55%
+# Chaque point est un portefeuille simulé (couleur = ratio de Sharpe).
+# L'enveloppe supérieure du nuage est la frontière efficiente.
 # Repères : losanges = chaque ligne seule ; triangle vert = simulation au
 # meilleur Sharpe (portefeuille « tangent ») ; étoile noire = VOTRE
 # allocation actuelle. Plus l'étoile est proche du bord supérieur gauche,
@@ -569,7 +756,7 @@ plot_ly() |>
     marker = list(
       size = 4, opacity = 0.45,
       color = sharpe_sim, colorscale = scale_seq,
-      colorbar = list(title = "Sharpe", len = 0.7)
+      colorbar = list(title = "Sharpe", len = 0.7, thickness = 10, outlinewidth = 0)
     ),
     name = "Portefeuilles simulés", hoverinfo = "skip"
   ) |>
@@ -596,14 +783,42 @@ plot_ly() |>
   ) |>
   layout(
     xaxis = list(title = "Volatilité annualisée", tickformat = ".0%"),
-    yaxis = list(title = "Rendement annualisé (historique)", tickformat = ".0%"),
-    legend = list(orientation = "h", x = 0, y = 1.1)
-  )
+    yaxis = list(title = "Rendement annualisé (historique)", tickformat = ".0%")
+  ) |>
+  habillage(legende = TRUE)
 ```
 
-# 🛡️ Couverture {scrolling="true"}
+## Row {height="420px"}
 
-## Row
+```{r}
+#| title: "MEDAF appliqué : bêta et alpha de chaque ligne (marché : CAC 40)"
+# Le tableau du MEDAF calculé en section 8 du pipeline. Lecture :
+#  - Bêta > 1 : la ligne amplifie les mouvements du CAC 40 ;
+#  - Alpha > 0 : elle a fait MIEUX que ce que son bêta laissait espérer.
+medaf |>
+  select(
+    Ligne = nom, `Bêta` = beta,
+    `Rendement réalisé (ann.)` = ret_realise,
+    `Rendement MEDAF attendu` = ret_medaf,
+    `Alpha (ann.)` = alpha
+  ) |>
+  datatable(
+    rownames = FALSE,
+    options = list(dom = "t", pageLength = 15, language = dt_fr),
+    class = "compact hover"
+  ) |>
+  formatRound("Bêta", digits = 2, dec.mark = ",") |>
+  formatPercentage(
+    c("Rendement réalisé (ann.)", "Rendement MEDAF attendu", "Alpha (ann.)"),
+    digits = 1, dec.mark = ","
+  ) |>
+  style_signe(c("Rendement réalisé (ann.)", "Alpha (ann.)")) |>
+  formatStyle("Ligne", fontWeight = "600")
+```
+
+# Couverture {scrolling="true"}
+
+## Row {height="auto"}
 
 ::: {.card title="Les options en deux mots"}
 
@@ -637,7 +852,7 @@ indicatifs** — les vraies primes dépendent de la volatilité implicite du mom
 
 :::
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="Comprendre les options par l'exemple — la théorie sans jargon"}
 
@@ -717,7 +932,8 @@ plot_ly(payoffs) |>
     xaxis = list(title = "Niveau du marché à l'échéance", tickformat = ".0%"),
     yaxis = list(title = "Valeur du portefeuille", tickformat = ",.0f", ticksuffix = " €"),
     legend = list(orientation = "h", x = 0, y = 1.12)
-  )
+  ) |>
+  habillage(legende = TRUE)
 ```
 
 ```{r}
@@ -746,14 +962,15 @@ plot_ly(payoffs) |>
     xaxis = list(title = "Niveau du marché à l'échéance", tickformat = ".0%"),
     yaxis = list(title = "Valeur du portefeuille", tickformat = ",.0f", ticksuffix = " €"),
     legend = list(orientation = "h", x = 0, y = 1.12)
-  )
+  ) |>
+  habillage(legende = TRUE)
 ```
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="Application à votre portefeuille : dimensionner la couverture"}
 
-La couverture indicielle s'ajuste avec le **bêta** (cf. onglet 📚 Théorie) : un
+La couverture indicielle s'ajuste avec le **bêta** (cf. onglet *Théorie*) : un
 portefeuille qui amplifie le marché demande plus de protection qu'un portefeuille
 défensif.
 
@@ -774,7 +991,7 @@ est proche du cours, plus l'assurance est chère ; ③ comparer le coût de la p
 
 :::
 
-## Row
+## Row {height="auto"}
 
 ::: {.card title="Quelle stratégie pour quelle situation ?"}
 

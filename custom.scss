@@ -1,0 +1,203 @@
+/*-- scss:defaults --*/
+
+// Thème du dashboard, posé par-dessus cosmo.
+// L'idée : un fond gris très clair, des cartes blanches, une barre de
+// navigation bleu nuit et des couleurs d'état plus sourdes que celles de
+// Bootstrap, pour un rendu plus « terminal financier » que « site vitrine ».
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+$font-family-sans-serif: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+$font-size-base: 0.925rem;
+
+// Palette : on reprend le bleu des graphiques (col_s1) pour rester cohérent.
+$primary:   #2a78d6;
+$success:   #17855f;
+$danger:    #c93b3a;
+$warning:   #b7791f;
+$info:      #3b82a6;
+$light:     #f4f6f9;
+$dark:      #0f2340;
+
+$body-bg:    #f3f5f8;
+$body-color: #1f2a37;
+$card-bg:    #ffffff;
+$border-color: #e2e7ee;
+
+$navbar-bg: #0f2340;
+$navbar-fg: #d7e0ec;
+$navbar-hl: #ffffff;
+
+$link-color: $primary;
+
+// Fonds des valueboxes : blancs pour toutes les couleurs. La couleur
+// d'état est portée par le liseré et le chiffre (voir plus bas).
+$valuebox-bg-primary: #ffffff;
+$valuebox-bg-success: #ffffff;
+$valuebox-bg-danger:  #ffffff;
+$valuebox-bg-warning: #ffffff;
+$valuebox-bg-info:    #ffffff;
+$valuebox-bg-light:   #ffffff;
+
+/*-- scss:rules --*/
+
+// ---- Barre de navigation ----------------------------------------------------
+.navbar {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 8px rgba(15, 35, 64, 0.18);
+
+  .navbar-title { font-weight: 700; letter-spacing: -0.01em; }
+  .navbar-subtitle,
+  .navbar-author { opacity: 0.7; font-weight: 400; }
+
+  // Onglet actif souligné plutôt que surligné : plus discret.
+  .nav-link {
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+  }
+  .nav-link.active {
+    background: transparent !important;
+    color: #fff !important;
+    border-bottom-color: #6aa9f0;
+  }
+}
+
+// ---- Cartes -----------------------------------------------------------------
+.card {
+  border: 1px solid $border-color;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  overflow: hidden;
+}
+
+.card-header {
+  background: #fff;
+  border-bottom: 1px solid #edf0f4;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #243447;
+  padding: 0.7rem 1rem;
+}
+
+// Bandeau d'information (fraîcheur des données) en tête de la vue d'ensemble.
+.bandeau {
+  font-size: 0.82rem;
+  color: #52606d;
+  line-height: 1.5;
+
+  p { margin: 0; }
+  p + p { margin-top: 0.35rem; }
+}
+
+// ---- Valueboxes -------------------------------------------------------------
+// Par défaut Quarto remplit les valueboxes de couleur vive et fait grossir le
+// chiffre avec la largeur de la carte, ce qui le coupait sur les écrans
+// moyens. On passe à des cartes blanches avec un liseré de couleur à gauche,
+// et une taille de chiffre bornée.
+.card.bslib-value-box {
+  --vb-accent: #7b8794;
+  --vb-value: #{$body-color};
+
+  color: $body-color !important;
+  border-left: 4px solid var(--vb-accent) !important;
+
+  &.bg-primary { --vb-accent: #{$primary}; --vb-value: #{$dark}; }
+  &.bg-success { --vb-accent: #{$success}; --vb-value: #{$success}; }
+  &.bg-danger  { --vb-accent: #{$danger};  --vb-value: #{$danger}; }
+  &.bg-warning { --vb-accent: #{$warning}; --vb-value: #{$warning}; }
+  &.bg-light   { --vb-accent: #9aa5b1;     --vb-value: #{$body-color}; }
+
+  // L'icône passe en petit dans le coin haut droit : elle décore sans
+  // voler de place au chiffre, quelle que soit la largeur de la carte.
+  .value-box-grid {
+    display: block !important;
+    position: relative;
+    height: 100%;
+  }
+
+  .value-box-showcase {
+    position: absolute;
+    top: 0.8rem;
+    right: 0.9rem;
+    width: auto !important;
+    height: auto;
+    padding: 0 !important;
+    color: var(--vb-accent);
+    opacity: 0.7;
+
+    .bi { font-size: 1.3rem !important; min-width: 0 !important; }
+  }
+
+  .value-box-area {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0.9rem 1.1rem !important;
+    justify-content: center;
+  }
+
+  .value-box-title {
+    font-size: 0.7rem !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #66788a;
+    margin-bottom: 0.35rem !important;
+    padding-right: 1.8rem;   // pour ne pas passer sous l'icône
+  }
+
+  .value-box-value {
+    font-size: clamp(1.1rem, 1.55vw, 1.6rem) !important;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--vb-value);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// ---- Tableaux DT ------------------------------------------------------------
+table.dataTable {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+
+  thead th {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #66788a;
+    border-bottom: 1px solid #dfe4ea !important;
+    white-space: nowrap;
+  }
+
+  // Les montants ne doivent jamais passer à la ligne (« 1 234,00 » / « € »).
+  td.dt-right { white-space: nowrap; }
+}
+
+.dataTables_wrapper {
+  font-size: 0.8rem;
+  color: #66788a;
+}
+
+.dt-buttons .dt-button {
+  font-size: 0.78rem !important;
+  padding: 0.2rem 0.6rem !important;
+  border-radius: 6px !important;
+  border: 1px solid #d5dce4 !important;
+  background: #fff !important;
+}
+
+// ---- Pages de texte (Théorie, Couverture) ----------------------------------
+.card-body {
+  table:not(.dataTable) {
+    font-size: 0.85rem;
+    th { background: $light; }
+  }
+
+  blockquote {
+    border-left: 3px solid $warning;
+    background: #fdf8ef;
+    padding: 0.6rem 1rem;
+    color: #5b4a2a;
+    font-size: 0.85rem;
+  }
+}
