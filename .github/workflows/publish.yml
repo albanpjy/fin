@@ -66,10 +66,26 @@ jobs:
           key: tinytex-${{ runner.os }}-${{ hashFiles('rapport.qmd') }}
           restore-keys: tinytex-${{ runner.os }}-
 
-      - name: Installer Quarto et TinyTeX (LaTeX pour le rapport PDF)
+      # TinyTeX n'est plus installé par l'action Quarto : depuis Quarto 1.10,
+      # `quarto install tool tinytex` interroge l'API GitHub sans jeton, même
+      # quand TinyTeX est déjà en cache, et échoue en 403 dès que la limite de
+      # requêtes du runner partagé est atteinte. On s'en occupe juste après.
+      - name: Installer Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          tinytex: true
+          tinytex: false
+
+      # Si le cache a restauré TinyTeX, on se contente de l'ajouter au PATH ;
+      # sinon on l'installe avec le script officiel, qui télécharge depuis
+      # yihui.org sans passer par l'API GitHub.
+      - name: Installer TinyTeX (LaTeX pour le rapport PDF)
+        run: |
+          if [ ! -x "$HOME/.TinyTeX/bin/x86_64-linux/tlmgr" ]; then
+            wget -qO- "https://yihui.org/tinytex/install-bin-unix.sh" | sh
+          else
+            echo "TinyTeX restauré depuis le cache."
+          fi
+          echo "$HOME/.TinyTeX/bin/x86_64-linux" >> "$GITHUB_PATH"
 
       # Rafraîchit la base de paquets de tlmgr : évite les « no matching
       # packages » lors de l'installation à la volée des paquets LaTeX
