@@ -59,6 +59,12 @@ sur push (`main` et `fin`), chaque jour ouvré à 18 h UTC (cron), et manuelleme
 - les packages R viennent en binaire de Posit RSPM (`use-public-rspm`) et sont
   mis en cache (`actions/cache` sur `R_LIBS_USER`) ; `rmarkdown` est requis en
   plus des packages du dashboard pour que Quarto exécute les chunks R ;
+- **TinyTeX n'est pas installé par `quarto-actions/setup`** (`tinytex: false`) :
+  depuis Quarto 1.10, `quarto install tool tinytex` interroge l'API GitHub
+  sans jeton même si TinyTeX est en cache, et échoue en 403 (limite de
+  requêtes des runners partagés). Une étape dédiée l'installe via le script
+  officiel `yihui.org/tinytex/install-bin-unix.sh` s'il manque, puis ajoute
+  `~/.TinyTeX/bin/x86_64-linux` au `GITHUB_PATH` ;
 - **TinyTeX est aussi mis en cache** (`actions/cache` sur `~/.TinyTeX`, clé
   indexée sur `rapport.qmd` + `restore-keys`) : après le premier run les paquets
   LaTeX sont restaurés en quelques secondes, ce qui accélère le rendu et évite
@@ -106,7 +112,7 @@ sortie va dans `docs/` (ignoré par git). Le workflow archive en plus chaque
 jour ouvré une copie horodatée du PDF dans `exports/`
 (`portfolio-tracker_AAAA-MM-JJ.pdf`), commitée sur `main` avec `[skip ci]`
 dans le message pour éviter une boucle de déclenchements ; le rendu CI installe
-TinyTeX via `quarto-actions/setup` (`tinytex: true`). ⚠️ Ne jamais écrire la
+TinyTeX par une étape dédiée (voir plus haut, pas via `quarto-actions/setup`). ⚠️ Ne jamais écrire la
 chaîne « [skip ci] » dans un message de commit ordinaire (même pour la citer) :
 GitHub scanne le message entier et saute alors le workflow.
 
