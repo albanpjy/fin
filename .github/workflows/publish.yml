@@ -38,11 +38,21 @@ jobs:
           r-version: "release"
           use-public-rspm: true
 
+      # Les packages R sont des binaires liés aux bibliothèques système (ICU,
+      # etc.) : la clé du cache inclut donc la version d'Ubuntu du runner.
+      # `ubuntu-latest` a changé de version (noble -> resolute) et le cache
+      # restauré contenait des binaires pour l'ancienne (libicui18n.so.74
+      # introuvable). Sans restore-keys : un changement d'OS repart de zéro.
+      - name: Identifier l'OS du runner (clé de cache)
+        run: |
+          . /etc/os-release
+          echo "OS_ID=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
       - name: Cache des packages R
         uses: actions/cache@v4
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: r-packages-${{ runner.os }}-v1
+          key: r-packages-${{ env.OS_ID }}-v2
 
       - name: Installer les packages R
         run: |
